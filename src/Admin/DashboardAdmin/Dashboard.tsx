@@ -348,11 +348,11 @@ const AdminDashboard = ({ navigation }: AdminDashboardProps) => {
               onPress={() => navigation.navigate('Reclamations')}
             />
             <QuickActionCard
-              title="Personnel"
+              title="Personnels"
               description="Gérer équipe"
               color="#8B5CF6"
               icon="👤"
-              onPress={() => navigation.navigate('Staff')}
+              onPress={() => navigation.navigate('Personnel')}
             />
             <QuickActionCard
               title="Statistiques"
@@ -361,11 +361,54 @@ const AdminDashboard = ({ navigation }: AdminDashboardProps) => {
               icon="📊"
               onPress={() => navigation.navigate('Statistics')}
             />
+             <QuickActionCard
+              title="Fournisseurs"
+              description="Voir détails"
+              color="#75b910ff"
+              icon="🚚"
+              onPress={() => navigation.navigate('Fournisseurs')}
+            />
+             <QuickActionCard
+              title="Espaces"
+              description="Voir détails"
+              color="#b91094ff"
+              icon="🏠"
+              onPress={() => navigation.navigate('Espaces')}
+            />
+
+             <QuickActionCard
+              title="Devis"
+              description="Voir détails"
+              color="#179ca6ff"
+              icon="🏠"
+              onPress={() => navigation.navigate('Devis')}
+
+            />
+            <QuickActionCard
+              title="Paramétres"
+              description="Voir détails"
+              color="#768081ff"
+              icon="⚙️​"
+              onPress={() => navigation.navigate('Devis')}
+
+            />
+              <QuickActionCard
+              title="Chat"
+              description="Voir détails"
+              color="#768081ff"
+              icon="💬​​"
+              onPress={() => navigation.navigate('Devis')}
+
+            />
+
+
           </View>
         </View>
 
         {/* Indicateur de performance */}
         <View style={styles.section}>
+
+
           <Text style={styles.sectionTitle}>Performance</Text>
           
           <View style={styles.performanceCard}>
@@ -377,7 +420,10 @@ const AdminDashboard = ({ navigation }: AdminDashboardProps) => {
                   : 0}%
               </Text>
             </View>
+
+
             <View style={styles.progressBar}>
+                  
               <View 
                 style={[
                   styles.progressFill, 

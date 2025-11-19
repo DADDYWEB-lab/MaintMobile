@@ -4,15 +4,16 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import LoginScreen from "./src/screens/LoginScreen";
 import AdminLayout from "./src/Admin/AdminLayout";
 import AddStaff from "./src/Admin/gestionPersonnel/Staff";
-import StaffScreen from "./src/Admin/gestionPersonnel/Staff";
+import Personnel from "./src/Admin/gestionPersonnel/Staff";
 import AddStaffScreen from "./src/Admin/gestionPersonnel/AddStaff";
 import EditStaffScreen from "./src/Admin/gestionPersonnel/EditStaff";
-import DashboardAdmin from "./src/Admin/DashboardAdmin/Dashboard"
-import TaskCalendar from './src/Admin/Calendrier des taches/TasckCalendar'
-import NewTask from './src/Admin/Calendrier des taches/NewTask'
-
-
-
+import DashboardAdmin from "./src/Admin/DashboardAdmin/Dashboard";
+import TaskCalendar from "./src/Admin/Calendrier des taches/TasckCalendar";
+import NewTask from "./src/Admin/Calendrier des taches/NewTask";
+import Reclamations from "./src/Admin/Reclamation/Reclamation";
+import Espaces from "./src/Admin/Espaces/Espaces";
+import Fournisseurs from "./src/Admin/Fournisseurs/Fournisseurs";
+import Devis from "./src/Admin/Devis/Devis";
 const Stack = createNativeStackNavigator();
 
 export default function App() {
@@ -24,40 +25,43 @@ export default function App() {
       >
         <Stack.Screen name="Login" component={LoginScreen} />
 
-        {/* <Stack.Screen name="espaceAdmin" component={AdminLayout} /> */}
-
-        <Stack.Screen name="addStaff" component={AddStaff} />
-
         <Stack.Screen
-          name="AdminLayout"
-          component={AdminLayout}
-          options={{ headerShown: false }}
-        />
-
-       <Stack.Screen
           name="DashboardAdmin"
           component={DashboardAdmin}
           options={{ headerShown: false }}
-         />
-      <Stack.Screen
+        />
+
+        {/* gestion des taches */}
+
+        <Stack.Screen
           name="TaskCalendar"
           component={TaskCalendar}
           options={{ headerShown: false }}
-       />
+        />
 
-
-  <Stack.Screen
+        <Stack.Screen
           name="NewTask"
           component={NewTask}
           options={{ headerShown: false }}
-       />
+        />
 
-
+        <Stack.Screen
+          name="Reclamations"
+          component={Reclamations}
+          options={{ headerShown: false }}
+        />
 
         {/* Gestion du Personnel */}
+
+        <Stack.Screen 
+        name="addStaff" 
+        component={AddStaff} 
+        />
+
         <Stack.Screen
-          name="staff"
-          component={StaffScreen}
+          name="Personnel"
+          component={Personnel}
+
           options={{ title: "Gestion du Personnel" }}
         />
 
@@ -66,28 +70,31 @@ export default function App() {
           component={AddStaffScreen}
           options={{ title: "Ajouter un membre" }}
         />
-        
-       
 
-        {/* <Stack.Screen
-          name="GesionPersonnel"
-          component={StaffScreen}
-          options={{ title: "Gestion du Personnel" }}
-        />
-
-
-
+        {/* Gestion des espaces */}
         <Stack.Screen
-          name="AddStaff"
-          component={AddStaffScreen}
+          name="Espaces"
+          component={Espaces}
           options={{ title: "Ajouter un membre" }}
         />
 
+
+        {/* Fournisseurs */}
         <Stack.Screen
-          name="EditStaff"
-          component={EditStaffScreen}
-          options={{ title: "Modifier le membre" }}
-        /> */}
+          name="Fournisseurs"
+          component={Fournisseurs}
+          options={{ title: "Gestion des fournisseurs" }}
+        />
+
+
+  {/* Devis */}
+        <Stack.Screen
+          name="Devis"
+          component={Devis}
+          options={{ title: "Gestion des Devis" }}
+        />
+
+
       </Stack.Navigator>
     </NavigationContainer>
   );

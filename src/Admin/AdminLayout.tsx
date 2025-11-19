@@ -44,7 +44,7 @@ const CARD_WIDTH = (width - 30 - CARD_GAP) / 2;
 
 const MENU_ITEMS = [
   { id: '1', title: 'Tableau de bord', icon: LayoutDashboard, route: 'DashboardAdmin', color: '#3498db' },
-  { id: '2', title: 'Personnel', icon: User, route: 'staff', color: '#9b59b6' },
+  { id: '2', title: 'Personnel', icon: User, route: 'Personnel', color: '#9b59b6' },
 //   { id: '3', title: 'Gestion des chambres', icon: Bed, route: 'Chambre', color: '#e74c3c' },
 //   { id: '4', title: 'Réclamations', icon: AlertCircle, route: 'Reclamations', color: '#f39c12' },
 //   { id: '5', title: 'Alerte Réclamation', icon: AlertTriangle, route: 'EscaladeReclamation', color: '#e67e22' },

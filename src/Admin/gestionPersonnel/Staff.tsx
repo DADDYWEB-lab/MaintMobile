@@ -1,6 +1,5 @@
 // @ts-nocheck
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,17 +9,20 @@ import {
   TextInput,
   Image,
   Alert,
-  Modal,
   ActivityIndicator,
   RefreshControl,
   ScrollView,
+  Animated,
+  Dimensions,
 } from 'react-native';
 import {
   collection,
-  getDocs,
   doc,
   deleteDoc,
   onSnapshot,
+  query,
+  where,
+  orderBy,
 } from 'firebase/firestore';
 import { db } from '../../../firebaseConfig';
 import {
@@ -32,33 +34,64 @@ import {
   Mail,
   User,
   X,
+  Filter,
+  MoreVertical,
+  Star,
+  Calendar,
 } from 'lucide-react-native';
+
+const { width } = Dimensions.get('window');
 
 const StaffScreen = ({ navigation }) => {
   const [staffList, setStaffList] = useState([]);
-  const [filteredStaff, setFilteredStaff] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedFilter, setSelectedFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [selectedFilter, setSelectedFilter] = useState('all');
+  const [showFilters, setShowFilters] = useState(false);
+  const [selectedStaff, setSelectedStaff] = useState(null);
+  const [fadeAnim] = useState(new Animated.Value(0));
 
-  // Récupérer le personnel depuis Firestore (temps réel)
+  // Filtres disponibles
+  const filters = [
+    { id: 'all', label: 'Tous', count: 0 },
+    { id: 'admin', label: 'Admin', count: 0 },
+    { id: 'chef-maintenance', label: 'Chef Maintenance', count: 0 },
+    { id: 'maintenance', label: 'Technicien', count: 0 },
+    { id: 'menage', label: 'Ménage', count: 0 },
+    { id: 'receptionniste', label: 'Réception', count: 0 },
+  ];
+
+  // Récupérer le personnel depuis Firestore avec optimisation
   useEffect(() => {
-    const unsubscribe = onSnapshot(
+    const q = query(
       collection(db, 'staff'),
+      orderBy('name', 'asc')
+    );
+
+    const unsubscribe = onSnapshot(
+      q,
       (snapshot) => {
         const list = snapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
+          joinDate: doc.data().joinDate?.toDate() || new Date(),
         }));
+        
         setStaffList(list);
-        setFilteredStaff(list);
         setLoading(false);
         setRefreshing(false);
+        
+        // Animation d'entrée
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }).start();
       },
       (error) => {
         console.error('Erreur Firestore:', error);
-        Alert.alert('Erreur', 'Impossible de charger les données');
+        Alert.alert('Erreur', 'Impossible de charger les données du personnel');
         setLoading(false);
         setRefreshing(false);
       }
@@ -67,8 +100,19 @@ const StaffScreen = ({ navigation }) => {
     return () => unsubscribe();
   }, []);
 
-  // Filtrer par recherche
-  useEffect(() => {
+  // Calculer les statistiques par filtre
+  const filterStats = useMemo(() => {
+    const stats = { all: staffList.length };
+    filters.forEach(filter => {
+      if (filter.id !== 'all') {
+        stats[filter.id] = staffList.filter(staff => staff.role === filter.id).length;
+      }
+    });
+    return stats;
+  }, [staffList]);
+
+  // Filtrer et rechercher avec useMemo pour optimiser les performances
+  const filteredStaff = useMemo(() => {
     let filtered = staffList;
 
     // Filtrer par rôle
@@ -77,96 +121,146 @@ const StaffScreen = ({ navigation }) => {
     }
 
     // Filtrer par recherche
-    if (searchTerm) {
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase().trim();
       filtered = filtered.filter(
         (staff) =>
-          staff.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          staff.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          staff.role?.toLowerCase().includes(searchTerm.toLowerCase())
+          staff.name?.toLowerCase().includes(term) ||
+          staff.email?.toLowerCase().includes(term) ||
+          staff.role?.toLowerCase().includes(term) ||
+          staff.specialite?.toLowerCase().includes(term) ||
+          staff.tel?.includes(term)
       );
     }
 
-    setFilteredStaff(filtered);
-  }, [searchTerm, staffList, selectedFilter]);
+    return filtered;
+  }, [staffList, searchTerm, selectedFilter]);
 
-  // Rafraîchir
-  const onRefresh = () => {
+  // Rafraîchir les données
+  const onRefresh = useCallback(() => {
     setRefreshing(true);
-  };
+  }, []);
 
-  // Supprimer un membre
-  const handleDelete = (staffId, staffName) => {
+  // Supprimer un membre avec confirmation
+  const handleDelete = useCallback((staffId, staffName) => {
     Alert.alert(
-      'Confirmation',
-      `Voulez-vous vraiment supprimer ${staffName} ?`,
+      'Confirmer la suppression',
+      `Êtes-vous sûr de vouloir supprimer "${staffName}" ? Cette action est irréversible.`,
       [
-        { text: 'Annuler', style: 'cancel' },
+        { 
+          text: 'Annuler', 
+          style: 'cancel',
+        },
         {
           text: 'Supprimer',
           style: 'destructive',
           onPress: async () => {
             try {
               await deleteDoc(doc(db, 'staff', staffId));
-              Alert.alert('Succès', `${staffName} a été supprimé`);
+              Alert.alert('Succès', `"${staffName}" a été supprimé avec succès`);
             } catch (error) {
               console.error('Erreur suppression:', error);
-              Alert.alert('Erreur', 'Impossible de supprimer');
+              Alert.alert('Erreur', 'Impossible de supprimer ce membre du personnel');
             }
           },
         },
       ]
     );
-  };
+  }, []);
 
-  // Obtenir le badge de rôle
-  const getRoleBadge = (role) => {
+  // Obtenir les informations du badge de rôle
+  const getRoleBadge = useCallback((role) => {
     const badges = {
-      admin: { label: 'Admin', color: '#3498db' },
-      'chef-maintenance': { label: 'Chef Maintenance', color: '#9b59b6' },
-      maintenance: { label: 'Maintenance', color: '#e67e22' },
-      menage: { label: 'Ménage', color: '#2ecc71' },
-      receptionniste: { label: 'Réception', color: '#e74c3c' },
+      admin: { label: 'Administrateur', color: '#3498db', icon: '👑' },
+      'chef-maintenance': { label: 'Chef Maintenance', color: '#9b59b6', icon: '🔧' },
+      maintenance: { label: 'Technicien', color: '#e67e22', icon: '⚙️' },
+      menage: { label: 'Agent de Ménage', color: '#2ecc71', icon: '🧹' },
+      receptionniste: { label: 'Réceptionniste', color: '#e74c3c', icon: '💼' },
     };
-    return badges[role] || { label: role, color: '#95a5a6' };
-  };
+    return badges[role] || { label: role, color: '#95a5a6', icon: '👤' };
+  }, []);
+
+  // Formater la date d'embauche
+  const formatJoinDate = useCallback((date) => {
+    if (!date) return 'Date inconnue';
+    
+    const now = new Date();
+    const diffTime = Math.abs(now - date);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 1) return 'Aujourd\'hui';
+    if (diffDays <= 7) return `Il y a ${diffDays} jours`;
+    
+    return date.toLocaleDateString('fr-FR', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+  }, []);
 
   // Rendu d'un membre du personnel
-  const renderStaffItem = ({ item }) => {
+  const renderStaffItem = useCallback(({ item, index }) => {
     const badge = getRoleBadge(item.role);
+    const animatedStyle = {
+      opacity: fadeAnim,
+      transform: [{
+        translateY: fadeAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [50, 0],
+        }),
+      }],
+    };
 
     return (
-      <View style={styles.card}>
+      <Animated.View style={[styles.card, animatedStyle]}>
         <View style={styles.cardHeader}>
-          {item.profileImage ? (
-            <Image
-              source={{ uri: item.profileImage }}
-              style={styles.avatar}
-              onError={(e) => console.log('Image error:', e.nativeEvent.error)}
-            />
-          ) : (
-            <View style={styles.avatarPlaceholder}>
-              <User color="#95a5a6" size={30} />
-            </View>
-          )}
+          <View style={styles.avatarContainer}>
+            {item.profileImage ? (
+              <Image
+                source={{ uri: item.profileImage }}
+                style={styles.avatar}
+                onError={() => console.log('Erreur de chargement de l\'image')}
+              />
+            ) : (
+              <View style={[styles.avatarPlaceholder, { backgroundColor: badge.color + '20' }]}>
+                <Text style={[styles.avatarText, { color: badge.color }]}>
+                  {item.name?.charAt(0)?.toUpperCase() || 'U'}
+                </Text>
+              </View>
+            )}
+            <View style={[styles.statusDot, { backgroundColor: item.isActive ? '#2ecc71' : '#95a5a6' }]} />
+          </View>
 
           <View style={styles.cardInfo}>
-            <Text style={styles.name}>{item.name}</Text>
-            <View style={[styles.badge, { backgroundColor: badge.color + '20' }]}>
-              <Text style={[styles.badgeText, { color: badge.color }]}>
-                {badge.label}
+            <View style={styles.nameContainer}>
+              <Text style={styles.name} numberOfLines={1}>
+                {item.name}
               </Text>
+              {item.isChef && (
+                <Star color="#f39c12" size={16} fill="#f39c12" />
+              )}
             </View>
+            
+            <View style={styles.roleContainer}>
+              <Text style={styles.roleIcon}>{badge.icon}</Text>
+              <View style={[styles.badge, { backgroundColor: badge.color + '15' }]}>
+                <Text style={[styles.badgeText, { color: badge.color }]}>
+                  {badge.label}
+                </Text>
+              </View>
+            </View>
+
             {item.specialite && (
-              <Text style={styles.specialite}>• {item.specialite}</Text>
+              <Text style={styles.specialite} numberOfLines={1}>
+                {item.specialite}
+              </Text>
             )}
           </View>
 
           <View style={styles.cardActions}>
             <TouchableOpacity
               style={[styles.actionBtn, styles.editBtn]}
-              onPress={() =>
-                navigation.navigate('EditStaff', { staff: item })
-              }
+              onPress={() => navigation.navigate('EditStaff', { staff: item })}
             >
               <Edit color="#3498db" size={18} />
             </TouchableOpacity>
@@ -179,38 +273,60 @@ const StaffScreen = ({ navigation }) => {
           </View>
         </View>
 
-        <View style={styles.cardFooter}>
-          <View style={styles.contactItem}>
-            <Mail color="#7f8c8d" size={14} />
-            <Text style={styles.contactText} numberOfLines={1}>
-              {item.email}
-            </Text>
-          </View>
-          {item.tel && (
+        <View style={styles.cardContent}>
+          <View style={styles.contactInfo}>
             <View style={styles.contactItem}>
-              <Phone color="#7f8c8d" size={14} />
-              <Text style={styles.contactText}>{item.tel}</Text>
+              <Mail color="#7f8c8d" size={14} />
+              <Text style={styles.contactText} numberOfLines={1}>
+                {item.email}
+              </Text>
             </View>
-          )}
-        </View>
-      </View>
-    );
-  };
+            
+            {item.tel && (
+              <View style={styles.contactItem}>
+                <Phone color="#7f8c8d" size={14} />
+                <Text style={styles.contactText}>{item.tel}</Text>
+              </View>
+            )}
+          </View>
 
-  // Filtres rapides
-  const filters = [
-    { id: 'all', label: 'Tous' },
-    { id: 'admin', label: 'Admin' },
-    { id: 'maintenance', label: 'Maintenance' },
-    { id: 'menage', label: 'Ménage' },
-    { id: 'receptionniste', label: 'Réception' },
-  ];
+          <View style={styles.metaInfo}>
+            <View style={styles.metaItem}>
+              <Calendar color="#7f8c8d" size={12} />
+              <Text style={styles.metaText}>
+                {formatJoinDate(item.joinDate)}
+              </Text>
+            </View>
+            
+            {item.reclamationsCount > 0 && (
+              <View style={styles.statsBadge}>
+                <Text style={styles.statsText}>
+                  {item.reclamationsCount} intervention{item.reclamationsCount > 1 ? 's' : ''}
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </Animated.View>
+    );
+  }, [fadeAnim, getRoleBadge, handleDelete, formatJoinDate]);
+
+  // Rendu du header de la liste
+  const renderListHeader = useCallback(() => (
+    <View style={styles.listHeader}>
+      <Text style={styles.listHeaderTitle}>
+        {filteredStaff.length} membre{filteredStaff.length > 1 ? 's' : ''} 
+        {selectedFilter !== 'all' && ` • ${filters.find(f => f.id === selectedFilter)?.label}`}
+        {searchTerm && ` • "${searchTerm}"`}
+      </Text>
+    </View>
+  ), [filteredStaff.length, selectedFilter, searchTerm]);
 
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#667eea" />
-        <Text style={styles.loadingText}>Chargement...</Text>
+        <Text style={styles.loadingText}>Chargement du personnel...</Text>
       </View>
     );
   }
@@ -219,10 +335,10 @@ const StaffScreen = ({ navigation }) => {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>Personnel</Text>
+        <View style={styles.headerTitleContainer}>
+          <Text style={styles.headerTitle}>Gestion du Personnel</Text>
           <Text style={styles.headerSubtitle}>
-            {filteredStaff.length} membre{filteredStaff.length > 1 ? 's' : ''}
+            {staffList.length} membre{staffList.length > 1 ? 's' : ''} au total
           </Text>
         </View>
         <TouchableOpacity
@@ -233,77 +349,124 @@ const StaffScreen = ({ navigation }) => {
         </TouchableOpacity>
       </View>
 
-      {/* Barre de recherche */}
-      <View style={styles.searchContainer}>
-        <Search color="#7f8c8d" size={20} style={styles.searchIcon} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Rechercher par nom, email..."
-          value={searchTerm}
-          onChangeText={setSearchTerm}
-          placeholderTextColor="#bdc3c7"
-        />
-        {searchTerm ? (
-          <TouchableOpacity onPress={() => setSearchTerm('')}>
-            <X color="#7f8c8d" size={20} />
-          </TouchableOpacity>
-        ) : null}
+      {/* Barre de recherche et filtres */}
+      <View style={styles.searchSection}>
+        <View style={styles.searchContainer}>
+          <Search color="#7f8c8d" size={20} style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Nom, email, spécialité..."
+            value={searchTerm}
+            onChangeText={setSearchTerm}
+            placeholderTextColor="#bdc3c7"
+            returnKeyType="search"
+          />
+          {searchTerm ? (
+            <TouchableOpacity 
+              style={styles.clearButton}
+              onPress={() => setSearchTerm('')}
+            >
+              <X color="#7f8c8d" size={20} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        <TouchableOpacity
+          style={styles.filterToggle}
+          onPress={() => setShowFilters(!showFilters)}
+        >
+          <Filter color={showFilters ? "#667eea" : "#7f8c8d"} size={20} />
+        </TouchableOpacity>
       </View>
 
-      {/* Filtres */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.filtersContainer}
-        contentContainerStyle={styles.filtersContent}
-      >
-        {filters.map((filter) => (
-          <TouchableOpacity
-            key={filter.id}
-            style={[
-              styles.filterChip,
-              selectedFilter === filter.id && styles.filterChipActive,
-            ]}
-            onPress={() => setSelectedFilter(filter.id)}
-          >
-            <Text
+      {/* Filtres horizontaux */}
+      {showFilters && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.filtersContainer}
+          contentContainerStyle={styles.filtersContent}
+        >
+          {filters.map((filter) => (
+            <TouchableOpacity
+              key={filter.id}
               style={[
-                styles.filterText,
-                selectedFilter === filter.id && styles.filterTextActive,
+                styles.filterChip,
+                selectedFilter === filter.id && styles.filterChipActive,
               ]}
+              onPress={() => setSelectedFilter(filter.id)}
             >
-              {filter.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+              <Text
+                style={[
+                  styles.filterText,
+                  selectedFilter === filter.id && styles.filterTextActive,
+                ]}
+              >
+                {filter.label}
+              </Text>
+              <View style={[
+                styles.filterCount,
+                selectedFilter === filter.id && styles.filterCountActive
+              ]}>
+                <Text style={[
+                  styles.filterCountText,
+                  selectedFilter === filter.id && styles.filterCountTextActive
+                ]}>
+                  {filterStats[filter.id] || 0}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
 
       {/* Liste du personnel */}
-      {filteredStaff.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <User color="#bdc3c7" size={60} />
-          <Text style={styles.emptyText}>Aucun membre trouvé</Text>
-          <Text style={styles.emptySubtext}>
-            {searchTerm
-              ? 'Essayez une autre recherche'
-              : 'Commencez par ajouter un membre'}
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={filteredStaff}
-          renderItem={renderStaffItem}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              colors={['#667eea']}
-            />
-          }
-        />
-      )}
+      <FlatList
+        data={filteredStaff}
+        renderItem={renderStaffItem}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.listContent}
+        ListHeaderComponent={renderListHeader}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <User color="#bdc3c7" size={80} />
+            <Text style={styles.emptyTitle}>
+              {searchTerm || selectedFilter !== 'all' ? 'Aucun résultat' : 'Aucun membre'}
+            </Text>
+            <Text style={styles.emptySubtext}>
+              {searchTerm 
+                ? `Aucun membre ne correspond à "${searchTerm}"`
+                : selectedFilter !== 'all'
+                ? `Aucun membre dans la catégorie "${filters.find(f => f.id === selectedFilter)?.label}"`
+                : 'Commencez par ajouter un membre du personnel'
+              }
+            </Text>
+            {(searchTerm || selectedFilter !== 'all') && (
+              <TouchableOpacity 
+                style={styles.resetButton}
+                onPress={() => {
+                  setSearchTerm('');
+                  setSelectedFilter('all');
+                }}
+              >
+                <Text style={styles.resetButtonText}>Réinitialiser les filtres</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        }
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#667eea']}
+            tintColor="#667eea"
+          />
+        }
+        showsVerticalScrollIndicator={false}
+        initialNumToRender={10}
+        maxToRenderPerBatch={10}
+        windowSize={5}
+      />
     </View>
   );
 };
@@ -311,161 +474,252 @@ const StaffScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f6fa',
+    backgroundColor: '#f8fafc',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f5f6fa',
+    backgroundColor: '#f8fafc',
   },
   loadingText: {
-    marginTop: 10,
+    marginTop: 16,
     fontSize: 16,
-    color: '#7f8c8d',
+    color: '#64748b',
+    fontWeight: '500',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#ecf0f1',
+    borderBottomColor: '#e2e8f0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  headerTitleContainer: {
+    flex: 1,
   },
   headerTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#2c3e50',
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1e293b',
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#7f8c8d',
+    color: '#64748b',
     marginTop: 4,
   },
   addButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: '#667eea',
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 4,
     shadowColor: '#667eea',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
+    elevation: 4,
   },
-  searchContainer: {
+  searchSection: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     backgroundColor: '#fff',
-    margin: 15,
-    paddingHorizontal: 15,
+    gap: 12,
+  },
+  searchContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
     borderRadius: 12,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
   searchIcon: {
-    marginRight: 10,
+    marginRight: 8,
   },
   searchInput: {
     flex: 1,
     paddingVertical: 12,
-    fontSize: 15,
-    color: '#2c3e50',
+    fontSize: 16,
+    color: '#1e293b',
+  },
+  clearButton: {
+    padding: 4,
+  },
+  filterToggle: {
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
   filtersContainer: {
-    maxHeight: 50,
-    marginBottom: 10,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
   },
   filtersContent: {
-    paddingHorizontal: 15,
-    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 8,
   },
   filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: '#fff',
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
     marginRight: 8,
-    elevation: 1,
   },
   filterChipActive: {
     backgroundColor: '#667eea',
-    elevation: 3,
+    borderColor: '#667eea',
   },
   filterText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#7f8c8d',
+    color: '#64748b',
+    marginRight: 6,
   },
   filterTextActive: {
     color: '#fff',
   },
+  filterCount: {
+    backgroundColor: '#e2e8f0',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    minWidth: 20,
+    alignItems: 'center',
+  },
+  filterCountActive: {
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  filterCountText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748b',
+  },
+  filterCountTextActive: {
+    color: '#fff',
+  },
+  listHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  listHeaderTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#64748b',
+  },
   listContent: {
-    padding: 15,
-    paddingBottom: 30,
+    padding: 16,
+    paddingBottom: 32,
   },
   card: {
     backgroundColor: '#fff',
-    borderRadius: 15,
-    padding: 15,
-    marginBottom: 15,
-    elevation: 3,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
   },
   cardHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 12,
   },
+  avatarContainer: {
+    position: 'relative',
+  },
   avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#ecf0f1',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#f1f5f9',
   },
   avatarPlaceholder: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#ecf0f1',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  avatarText: {
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  statusDot: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#fff',
   },
   cardInfo: {
     flex: 1,
     marginLeft: 12,
   },
-  name: {
-    fontSize: 17,
-    fontWeight: 'bold',
-    color: '#2c3e50',
+  nameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     marginBottom: 6,
+  },
+  name: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1e293b',
+    flex: 1,
+  },
+  roleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  roleIcon: {
+    fontSize: 14,
   },
   badge: {
     alignSelf: 'flex-start',
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 12,
-    marginBottom: 4,
+    borderRadius: 8,
   },
   badgeText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   specialite: {
-    fontSize: 12,
-    color: '#7f8c8d',
+    fontSize: 14,
+    color: '#64748b',
     fontStyle: 'italic',
   },
   cardActions: {
@@ -475,21 +729,27 @@ const styles = StyleSheet.create({
   actionBtn: {
     width: 36,
     height: 36,
-    borderRadius: 8,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
   },
   editBtn: {
-    backgroundColor: '#e3f2fd',
+    backgroundColor: '#f0f9ff',
+    borderColor: '#e0f2fe',
   },
   deleteBtn: {
-    backgroundColor: '#ffebee',
+    backgroundColor: '#fef2f2',
+    borderColor: '#fee2e2',
   },
-  cardFooter: {
+  cardContent: {
     borderTopWidth: 1,
-    borderTopColor: '#ecf0f1',
+    borderTopColor: '#f1f5f9',
     paddingTop: 12,
+  },
+  contactInfo: {
     gap: 8,
+    marginBottom: 12,
   },
   contactItem: {
     flexDirection: 'row',
@@ -497,27 +757,66 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   contactText: {
-    fontSize: 13,
-    color: '#555',
+    fontSize: 14,
+    color: '#475569',
     flex: 1,
+  },
+  metaInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  metaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  metaText: {
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  statsBadge: {
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  statsText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#64748b',
   },
   emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
     paddingHorizontal: 40,
   },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#2c3e50',
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1e293b',
     marginTop: 20,
+    marginBottom: 8,
+    textAlign: 'center',
   },
   emptySubtext: {
-    fontSize: 14,
-    color: '#7f8c8d',
-    marginTop: 8,
+    fontSize: 15,
+    color: '#64748b',
     textAlign: 'center',
+    lineHeight: 22,
+  },
+  resetButton: {
+    marginTop: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: '#667eea',
+    borderRadius: 12,
+  },
+  resetButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
   },
 });
 

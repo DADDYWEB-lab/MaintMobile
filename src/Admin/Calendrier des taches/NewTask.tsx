@@ -1347,8 +1347,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontStyle: 'italic',
   },
-
-
   calendarOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
