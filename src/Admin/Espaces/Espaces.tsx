@@ -79,7 +79,7 @@ const GestionEspacesHierarchie = ({ navigation }: any) => {
     nom: '',
     type: 'public',
     couleur: '#3B82F6',
-    icone: '🏢'
+    icone: 'public'
   });
 
   // Formulaire assignation
@@ -483,7 +483,7 @@ const GestionEspacesHierarchie = ({ navigation }: any) => {
   };
 
   const resetCategorieForm = () => {
-    setCategorieForm({ nom: '', type: 'public', couleur: '#3B82F6', icone: '🏢' });
+    setCategorieForm({ nom: '', type: 'public', couleur: '#3B82F6', icone: 'public' });
   };
 
   const resetAssignForm = () => {
@@ -543,18 +543,18 @@ const GestionEspacesHierarchie = ({ navigation }: any) => {
     setTimeout(() => setRefreshing(false), 1000);
   }, []);
 
-  // Composant Carte Statistique
+  // Composant Carte Statistique ultra compact
   const StatCard = ({ icon, label, value, colors }) => (
     <View style={[styles.statCard, { backgroundColor: colors[0] }]}>
-      <View style={styles.statHeader}>
-        <Text style={styles.statIcon}>{icon}</Text>
+      <Text style={styles.statIcon}>{icon}</Text>
+      <View style={styles.statTextContainer}>
+        <Text style={styles.statValue}>{value}</Text>
         <Text style={styles.statLabel}>{label}</Text>
       </View>
-      <Text style={styles.statValue}>{value}</Text>
     </View>
   );
 
-  // Composant Carte Espace
+  // Composant Carte Espace compact
   const EspaceCard = ({ espace }) => {
     const categorie = getCategorieById(espace.categorieId);
     const sousEspacesEnfants = getSousEspacesByParent(espace.id);
@@ -562,8 +562,11 @@ const GestionEspacesHierarchie = ({ navigation }: any) => {
 
     return (
       <View style={[styles.espaceCard, { borderColor: categorie?.couleur || '#E5E7EB' }]}>
-        {/* Header Espace */}
-        <View style={[styles.espaceHeader, { backgroundColor: categorie?.couleur || '#6B7280' }]}>
+        {/* Header Espace compact */}
+        <TouchableOpacity 
+          style={[styles.espaceHeader, { backgroundColor: categorie?.couleur || '#6B7280' }]}
+          onPress={() => toggleExpand(espace.id)}
+        >
           <View style={styles.espaceHeaderContent}>
             <View style={styles.espaceInfo}>
               <Text style={styles.espaceIcon}>{categorie?.icone || '🏢'}</Text>
@@ -572,280 +575,290 @@ const GestionEspacesHierarchie = ({ navigation }: any) => {
                   {espace.nom} {espace.numero && `- ${espace.numero}`}
                 </Text>
                 <View style={styles.espaceTags}>
-                  <View style={styles.tag}>
-                    <Text style={styles.tagText}>{espace.type}</Text>
-                  </View>
-                  <View style={styles.tag}>
-                    <Text style={styles.tagText}>{categorie?.nom}</Text>
-                  </View>
-                  <View style={styles.tag}>
-                    <Text style={styles.tagText}>{sousEspacesEnfants.length} sous-espace(s)</Text>
-                  </View>
+                  <Text style={styles.tagText}>{espace.type}</Text>
+                  <Text style={styles.tagText}>•</Text>
+                  <Text style={styles.tagText}>{categorie?.nom}</Text>
+                  <Text style={styles.tagText}>•</Text>
+                  <Text style={styles.tagText}>{sousEspacesEnfants.length} sous-espaces</Text>
                   {espace.assignations && espace.assignations.length > 0 && (
-                    <View style={[styles.tag, { backgroundColor: 'rgba(34, 197, 94, 0.3)' }]}>
-                      <Text style={styles.tagText}>{espace.assignations.length} assignation(s)</Text>
-                    </View>
+                    <>
+                      <Text style={styles.tagText}>•</Text>
+                      <Text style={styles.tagText}>{espace.assignations.length} assign.</Text>
+                    </>
                   )}
                 </View>
               </View>
             </View>
 
-            {/* Boutons d'action */}
-            <View style={styles.espaceActions}>
+            {/* Indicateur d'expansion */}
+            <Text style={styles.expandIcon}>{isExpanded ? '▲' : '▼'}</Text>
+          </View>
+        </TouchableOpacity>
+
+        {/* Contenu déplié */}
+        {isExpanded && (
+          <View style={styles.expandedContent}>
+            {/* Actions rapides */}
+            <View style={styles.quickActions}>
               <TouchableOpacity
-                style={styles.actionButton}
+                style={styles.quickAction}
                 onPress={() => {
                   setQrCodeData({ valeur: espace.id, titre: espace.nom });
                   setShowQRModal(true);
                 }}
               >
-                <Text style={styles.actionButtonText}>📱 QR</Text>
+                <Text style={styles.quickActionText}>📱 QR</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.actionButton}
+                style={styles.quickAction}
                 onPress={() => {
                   setSelectedEspace(espace);
                   setSelectedSousEspace(null);
                   setShowAssignModal(true);
                 }}
               >
-                <Text style={styles.actionButtonText}>👤 Assigner</Text>
+                <Text style={styles.quickActionText}>👤 Assigner</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.actionButton}
+                style={styles.quickAction}
                 onPress={() => {
                   setSousEspaceForm({ ...sousEspaceForm, espaceParentId: espace.id });
                   setShowSousEspaceModal(true);
                 }}
               >
-                <Text style={styles.actionButtonText}>➕ Sous-espace</Text>
+                <Text style={styles.quickActionText}>➕ Sous-espace</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.actionButton, { backgroundColor: 'rgba(239,68,68,0.8)' }]}
+                style={[styles.quickAction, styles.deleteAction]}
                 onPress={() => handleDeleteEspace(espace)}
                 disabled={isSubmitting}
               >
-                <Text style={styles.actionButtonText}>🗑️</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => toggleExpand(espace.id)}
-              >
-                <Text style={styles.actionButtonText}>{isExpanded ? '▲' : '▼'}</Text>
+                <Text style={styles.quickActionText}>🗑️</Text>
               </TouchableOpacity>
             </View>
-          </View>
 
-          {/* Assignations Espace */}
-          {espace.assignations && espace.assignations.length > 0 && (
-            <View style={styles.assignationsContainer}>
-              <Text style={styles.assignationsTitle}>Assignations :</Text>
-              {espace.assignations.map((assignation, index) => (
-                <View key={index} style={styles.assignationItem}>
-                  <Text style={styles.assignationText}>
-                    ✓ {assignation.employeNom} ({assignation.typeTache})
-                  </Text>
-                  <Text style={styles.assignationDate}>
-                    depuis {new Date(assignation.dateDebut).toLocaleDateString()}
-                  </Text>
-                  <TouchableOpacity
-                    style={styles.removeButton}
-                    onPress={() => handleRemoveAssignation(espace.id, false, index)}
-                  >
-                    <Text style={styles.removeButtonText}>Retirer</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-          )}
-        </View>
-
-        {/* Liste des sous-espaces */}
-        {isExpanded && sousEspacesEnfants.length > 0 && (
-          <View style={styles.sousEspacesContainer}>
-            {sousEspacesEnfants.map(sousEspace => (
-              <View key={sousEspace.id} style={styles.sousEspaceCard}>
-                <View style={styles.sousEspaceInfo}>
-                  <Text style={styles.sousEspaceIcon}>🛏️</Text>
-                  <View style={styles.sousEspaceDetails}>
-                    <Text style={styles.sousEspaceNom}>
-                      {sousEspace.numero} {sousEspace.nom && `- ${sousEspace.nom}`}
+            {/* Assignations */}
+            {espace.assignations && espace.assignations.length > 0 && (
+              <View style={styles.assignationsContainer}>
+                <Text style={styles.assignationsTitle}>Assignations :</Text>
+                {espace.assignations.map((assignation, index) => (
+                  <View key={index} style={styles.assignationItem}>
+                    <Text style={styles.assignationText}>
+                      {assignation.employeNom} ({assignation.typeTache})
                     </Text>
-                    <Text style={styles.sousEspaceType}>
-                      {sousEspace.type}
-                      {sousEspace.superficie && ` • ${sousEspace.superficie}m²`}
-                      {sousEspace.capacite && ` • ${sousEspace.capacite} pers.`}
-                      {sousEspace.statut && ` • ${sousEspace.statut}`}
-                    </Text>
-
-                    {/* Assignations Sous-espace */}
-                    {sousEspace.assignations && sousEspace.assignations.length > 0 && (
-                      <View style={styles.sousEspaceAssignations}>
-                        <Text style={styles.sousEspaceAssignTitle}>Assignations :</Text>
-                        {sousEspace.assignations.map((assignation, index) => (
-                          <View key={index} style={styles.sousEspaceAssignItem}>
-                            <Text style={styles.sousEspaceAssignText}>
-                              ✓ {assignation.employeNom} ({assignation.typeTache})
-                            </Text>
-                            <TouchableOpacity
-                              style={styles.sousEspaceRemoveButton}
-                              onPress={() => handleRemoveAssignation(sousEspace.id, true, index)}
-                            >
-                              <Text style={styles.sousEspaceRemoveText}>×</Text>
-                            </TouchableOpacity>
-                          </View>
-                        ))}
-                      </View>
-                    )}
+                    <TouchableOpacity
+                      style={styles.removeButton}
+                      onPress={() => handleRemoveAssignation(espace.id, false, index)}
+                    >
+                      <Text style={styles.removeButtonText}>×</Text>
+                    </TouchableOpacity>
                   </View>
-                </View>
-
-                {/* Actions Sous-espace */}
-                <View style={styles.sousEspaceActions}>
-                  <TouchableOpacity
-                    style={styles.sousEspaceActionBtn}
-                    onPress={() => {
-                      setQrCodeData({
-                        valeur: sousEspace.id,
-                        titre: `${sousEspace.numero} - ${sousEspace.nom || ''}`
-                      });
-                      setShowQRModal(true);
-                    }}
-                  >
-                    <Text style={styles.sousEspaceActionText}>📱</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.sousEspaceActionBtn}
-                    onPress={() => {
-                      setSelectedSousEspace(sousEspace);
-                      setSelectedEspace(null);
-                      setShowAssignModal(true);
-                    }}
-                  >
-                    <Text style={styles.sousEspaceActionText}>👤</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.sousEspaceActionBtn, { backgroundColor: '#F59E0B' }]}
-                    onPress={() => {
-                      setSelectedSousEspace(sousEspace);
-                      setSousEspaceForm({
-                        nom: sousEspace.nom || '',
-                        numero: sousEspace.numero || '',
-                        type: sousEspace.type || 'chambre',
-                        espaceParentId: sousEspace.espaceParentId || '',
-                        superficie: sousEspace.superficie || '',
-                        capacite: sousEspace.capacite || '',
-                        statut: sousEspace.statut || 'libre',
-                        equipements: sousEspace.equipements || []
-                      });
-                      setShowSousEspaceModal(true);
-                    }}
-                  >
-                    <Text style={styles.sousEspaceActionText}>✏️</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.sousEspaceActionBtn, { backgroundColor: '#EF4444' }]}
-                    onPress={() => handleDeleteSousEspace(sousEspace)}
-                  >
-                    <Text style={styles.sousEspaceActionText}>🗑️</Text>
-                  </TouchableOpacity>
-                </View>
+                ))}
               </View>
-            ))}
+            )}
+
+            {/* Sous-espaces */}
+            {sousEspacesEnfants.length > 0 && (
+              <View style={styles.sousEspacesContainer}>
+                <Text style={styles.sousEspacesTitle}>Sous-espaces :</Text>
+                {sousEspacesEnfants.map(sousEspace => (
+                  <SousEspaceCard 
+                    key={sousEspace.id} 
+                    sousEspace={sousEspace} 
+                    onEdit={setSelectedSousEspace}
+                    onAssign={setSelectedSousEspace}
+                    onShowQR={setQrCodeData}
+                    onDelete={handleDeleteSousEspace}
+                    onRemoveAssignation={handleRemoveAssignation}
+                  />
+                ))}
+              </View>
+            )}
           </View>
         )}
       </View>
     );
   };
 
+  // Composant SousEspaceCard séparé
+  const SousEspaceCard = ({ sousEspace, onEdit, onAssign, onShowQR, onDelete, onRemoveAssignation }) => (
+    <View style={styles.sousEspaceCard}>
+      <View style={styles.sousEspaceMain}>
+        <Text style={styles.sousEspaceIcon}>
+          {typesSousEspace.find(t => t.value === sousEspace.type)?.icon || '🛏️'}
+        </Text>
+        
+        <View style={styles.sousEspaceDetails}>
+          <Text style={styles.sousEspaceNom}>
+            {sousEspace.numero} {sousEspace.nom && `- ${sousEspace.nom}`}
+          </Text>
+          <Text style={styles.sousEspaceInfo}>
+            {sousEspace.type}
+            {sousEspace.superficie && ` • ${sousEspace.superficie}m²`}
+            {sousEspace.capacite && ` • ${sousEspace.capacite} pers.`}
+            {sousEspace.statut && ` • ${sousEspace.statut}`}
+          </Text>
+
+          {/* Assignations compactes */}
+          {sousEspace.assignations && sousEspace.assignations.length > 0 && (
+            <View style={styles.sousEspaceAssignations}>
+              {sousEspace.assignations.map((assignation, index) => (
+                <View key={index} style={styles.sousEspaceAssignItem}>
+                  <Text style={styles.sousEspaceAssignText}>
+                    {assignation.employeNom} ({assignation.typeTache})
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.sousEspaceRemoveButton}
+                    onPress={() => onRemoveAssignation(sousEspace.id, true, index)}
+                  >
+                    <Text style={styles.sousEspaceRemoveText}>×</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      </View>
+
+      {/* Actions compactes */}
+      <View style={styles.sousEspaceActions}>
+        <TouchableOpacity
+          style={styles.sousEspaceActionBtn}
+          onPress={() => onShowQR({
+            valeur: sousEspace.id,
+            titre: `${sousEspace.numero} - ${sousEspace.nom || ''}`
+          })}
+        >
+          <Text style={styles.sousEspaceActionText}>📱</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.sousEspaceActionBtn}
+          onPress={() => {
+            onAssign(sousEspace);
+            setShowAssignModal(true);
+          }}
+        >
+          <Text style={styles.sousEspaceActionText}>👤</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.sousEspaceActionBtn, { backgroundColor: '#F59E0B' }]}
+          onPress={() => {
+            onEdit(sousEspace);
+            setShowSousEspaceModal(true);
+          }}
+        >
+          <Text style={styles.sousEspaceActionText}>✏️</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.sousEspaceActionBtn, { backgroundColor: '#EF4444' }]}
+          onPress={() => onDelete(sousEspace)}
+        >
+          <Text style={styles.sousEspaceActionText}>🗑️</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
   return (
     <View style={styles.container}>
-      {/* En-tête avec statistiques */}
+      {/* Header compact */}
       <View style={styles.header}>
-        <Text style={styles.title}>Gestion des Espaces</Text>
-        <Text style={styles.subtitle}>Organisation hiérarchique des locaux</Text>
-        
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statsContainer}>
-          <StatCard 
-            icon="🏢" 
-            label="Espaces Publics" 
-            value={stats.public}
-            colors={['#3B82F6', '#1D4ED8']}
-          />
-          <StatCard 
-            icon="🏭" 
-            label="Espaces Pro" 
-            value={stats.professionnel}
-            colors={['#F59E0B', '#D97706']}
-          />
-          <StatCard 
-            icon="🛏️" 
-            label="Sous-espaces" 
-            value={stats.sousEspaces}
-            colors={['#10B981', '#047857']}
-          />
-          <StatCard 
-            icon="👥" 
-            label="Assignations" 
-            value={stats.assignations}
-            colors={['#8B5CF6', '#7C3AED']}
-          />
-        </ScrollView>
+        <View style={styles.headerTop}>
+          <Text style={styles.title}>Gestion des Espaces</Text>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.headerButton}
+              onPress={() => {
+                resetEspaceForm();
+                setShowEspaceModal(true);
+              }}
+            >
+              <Text style={styles.headerButtonText}>🏢</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.headerButton}
+              onPress={() => setShowCategorieModal(true)}
+            >
+              <Text style={styles.headerButtonText}>🏷️</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+        <Text style={styles.subtitle}>Organisation hiérarchique</Text>
       </View>
 
-      {/* Barre de recherche et filtres */}
-      <View style={styles.filtersContainer}>
-        <View style={styles.searchContainer}>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Rechercher un espace..."
-            value={searchTerm}
-            onChangeText={setSearchTerm}
-          />
-          <Text style={styles.searchIcon}>🔍</Text>
-        </View>
+      {/* Stats Cards compactes - ESPACE RÉDUIT */}
+      <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.statsContainer}
+      >
+        <StatCard icon="👥" label="Publics" value={stats.public} colors={['#DBEAFE', '#3B82F6']} />
+        <StatCard icon="🏢" label="Professionnels" value={stats.professionnel} colors={['#FEF3C7', '#F59E0B']} />
+        <StatCard icon="🛏️" label="Sous-espaces" value={stats.sousEspaces} colors={['#DCFCE7', '#10B981']} />
+        <StatCard icon="👤" label="Assignations" value={stats.assignations} colors={['#F3E8FF', '#8B5CF6']} />
+      </ScrollView>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesFilter}>
+      {/* Barre de recherche - RAPPROCHÉE des stats */}
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="🔍 Rechercher un espace..."
+          placeholderTextColor="#9CA3AF"
+          value={searchTerm}
+          onChangeText={setSearchTerm}
+        />
+      </View>
+
+      {/* Filtre Catégories - RAPPROCHÉ de la recherche */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.categoriesFilter}
+      >
+        <TouchableOpacity
+          style={[
+            styles.filterChip,
+            filterCategorie === 'all' && styles.filterChipActive
+          ]}
+          onPress={() => setFilterCategorie('all')}
+        >
+          <Text style={[
+            styles.filterChipText,
+            filterCategorie === 'all' && styles.filterChipTextActive
+          ]}>
+            Toutes
+          </Text>
+        </TouchableOpacity>
+
+        {categoriesDefaut.map(cat => (
           <TouchableOpacity
-            style={[styles.filterChip, filterCategorie === 'all' && styles.filterChipActive]}
-            onPress={() => setFilterCategorie('all')}
+            key={cat.id}
+            style={[
+              styles.filterChip,
+              { borderColor: cat.couleur },
+              filterCategorie === cat.id && { backgroundColor: cat.couleur }
+            ]}
+            onPress={() => setFilterCategorie(cat.id)}
           >
-            <Text style={[styles.filterChipText, filterCategorie === 'all' && styles.filterChipTextActive]}>
-              Tous
+            <Text style={[
+              styles.filterChipText,
+              filterCategorie === cat.id && styles.filterChipTextActive
+            ]}>
+              {cat.icone} {cat.nom}
             </Text>
           </TouchableOpacity>
-          
-          {categories.map(categorie => (
-            <TouchableOpacity
-              key={categorie.id}
-              style={[
-                styles.filterChip,
-                { borderColor: categorie.couleur },
-                filterCategorie === categorie.id && { backgroundColor: categorie.couleur }
-              ]}
-              onPress={() => setFilterCategorie(categorie.id)}
-            >
-              <Text style={[
-                styles.filterChipText,
-                filterCategorie === categorie.id && styles.filterChipTextActive
-              ]}>
-                {categorie.icone} {categorie.nom}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
+        ))}
+      </ScrollView>
 
-      {/* Liste des espaces */}
+      {/* Liste des espaces - COMMENCE IMMÉDIATEMENT après les filtres */}
       <ScrollView
-        style={styles.espacesList}
+        style={styles.listContainer}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -853,125 +866,103 @@ const GestionEspacesHierarchie = ({ navigation }: any) => {
       >
         {filteredEspaces.length === 0 ? (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyStateIcon}>🏢</Text>
-            <Text style={styles.emptyStateTitle}>Aucun espace trouvé</Text>
-            <Text style={styles.emptyStateText}>
+            <Text style={styles.emptyIcon}>🏢</Text>
+            <Text style={styles.emptyTitle}>Aucun espace trouvé</Text>
+            <Text style={styles.emptyText}>
               {searchTerm || filterCategorie !== 'all' 
-                ? 'Aucun espace ne correspond à votre recherche'
-                : 'Commencez par créer votre premier espace'
+                ? 'Aucun résultat pour votre recherche'
+                : 'Créez votre premier espace pour commencer'
               }
             </Text>
             <TouchableOpacity
-              style={styles.emptyStateButton}
+              style={styles.emptyButton}
               onPress={() => setShowEspaceModal(true)}
             >
-              <Text style={styles.emptyStateButtonText}>➕ Créer un espace</Text>
+              <Text style={styles.emptyButtonText}>➕ Créer un espace</Text>
             </TouchableOpacity>
           </View>
         ) : (
-          filteredEspaces.map(espace => (
-            <EspaceCard key={espace.id} espace={espace} />
-          ))
+          <View style={styles.espacesList}>
+            {filteredEspaces.map(espace => (
+              <EspaceCard key={espace.id} espace={espace} />
+            ))}
+          </View>
         )}
       </ScrollView>
 
-      {/* Bouton d'action flottant */}
-      <View style={styles.fabContainer}>
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={() => setShowEspaceModal(true)}
-        >
-          <Text style={styles.fabText}>🏢</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={[styles.fab, styles.fabSecondary]}
-          onPress={() => setShowCategorieModal(true)}
-        >
-          <Text style={styles.fabText}>🏷️</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Modal Ajout/Modification Espace */}
-      <Modal
-        visible={showEspaceModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => {
-          setShowEspaceModal(false);
-          resetEspaceForm();
-        }}
-      >
+      {/* Modal Espace Parent */}
+      <Modal visible={showEspaceModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>
-              {selectedEspace ? 'Modifier l\'espace' : 'Nouvel espace'}
-            </Text>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {selectedEspace ? 'Modifier l\'espace' : 'Nouvel Espace'}
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowEspaceModal(false);
+                  resetEspaceForm();
+                }}
+              >
+                <Text style={styles.modalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
 
-            <ScrollView style={styles.formContainer}>
+            <ScrollView style={styles.modalBody}>
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Nom de l'espace *</Text>
                 <TextInput
                   style={styles.input}
+                  placeholder="Ex: Rez-de-chaussée"
                   value={espaceForm.nom}
-                  onChangeText={(text) => setEspaceForm(prev => ({ ...prev, nom: text }))}
-                  placeholder="Ex: Étage 1, Bâtiment A..."
+                  onChangeText={(text) => setEspaceForm({ ...espaceForm, nom: text })}
                 />
               </View>
 
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Type d'espace</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.typesContainer}>
-                  {typesEspace.map(type => (
-                    <TouchableOpacity
-                      key={type.value}
-                      style={[
-                        styles.typeChip,
-                        espaceForm.type === type.value && styles.typeChipActive
-                      ]}
-                      onPress={() => setEspaceForm(prev => ({ ...prev, type: type.value }))}
-                    >
-                      <Text style={styles.typeChipIcon}>{type.icon}</Text>
-                      <Text style={[
-                        styles.typeChipText,
-                        espaceForm.type === type.value && styles.typeChipTextActive
-                      ]}>
-                        {type.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
+              <View style={styles.formRow}>
+                <View style={styles.formHalf}>
+                  <Text style={styles.label}>Numéro/Identifiant</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Ex: RDC"
+                    value={espaceForm.numero}
+                    onChangeText={(text) => setEspaceForm({ ...espaceForm, numero: text })}
+                  />
+                </View>
 
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Numéro/Identifiant</Text>
-                <TextInput
-                  style={styles.input}
-                  value={espaceForm.numero}
-                  onChangeText={(text) => setEspaceForm(prev => ({ ...prev, numero: text }))}
-                  placeholder="Ex: 101, A1, ZONE-B..."
-                />
+                <View style={styles.formHalf}>
+                  <Text style={styles.label}>Type d'espace</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    {typesEspace.map(type => (
+                      <TouchableOpacity
+                        key={type.value}
+                        style={[
+                          styles.typeOption,
+                          espaceForm.type === type.value && styles.typeOptionActive
+                        ]}
+                        onPress={() => setEspaceForm({ ...espaceForm, type: type.value })}
+                      >
+                        <Text style={styles.typeOptionText}>{type.icon} {type.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
               </View>
 
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Catégorie *</Text>
-                <ScrollView style={styles.categoriesGrid}>
-                  {categories.map(categorie => (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {categoriesDefaut.map(cat => (
                     <TouchableOpacity
-                      key={categorie.id}
+                      key={cat.id}
                       style={[
-                        styles.categorieCard,
-                        { borderColor: categorie.couleur },
-                        espaceForm.categorieId === categorie.id && { backgroundColor: categorie.couleur + '20' }
+                        styles.categoryOption,
+                        { backgroundColor: cat.couleur },
+                        espaceForm.categorieId === cat.id && styles.categoryOptionActive
                       ]}
-                      onPress={() => setEspaceForm(prev => ({ ...prev, categorieId: categorie.id }))}
+                      onPress={() => setEspaceForm({ ...espaceForm, categorieId: cat.id })}
                     >
-                      <Text style={styles.categorieIcon}>{categorie.icone}</Text>
-                      <Text style={styles.categorieName}>{categorie.nom}</Text>
-                      <Text style={styles.categorieExemples}>{categorie.exemples}</Text>
-                      {espaceForm.categorieId === categorie.id && (
-                        <Text style={[styles.checkmark, { color: categorie.couleur }]}>✓</Text>
-                      )}
+                      <Text style={styles.categoryOptionText}>{cat.icone} {cat.nom}</Text>
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
@@ -980,35 +971,34 @@ const GestionEspacesHierarchie = ({ navigation }: any) => {
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Description</Text>
                 <TextInput
-                  style={[styles.input, styles.textArea]}
-                  value={espaceForm.description}
-                  onChangeText={(text) => setEspaceForm(prev => ({ ...prev, description: text }))}
-                  placeholder="Description optionnelle..."
+                  style={[styles.input, styles.textarea]}
+                  placeholder="Description de l'espace..."
                   multiline
                   numberOfLines={3}
+                  value={espaceForm.description}
+                  onChangeText={(text) => setEspaceForm({ ...espaceForm, description: text })}
                 />
               </View>
             </ScrollView>
 
-            <View style={styles.modalActions}>
+            <View style={styles.modalFooter}>
               <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
+                style={styles.cancelButton}
                 onPress={() => {
                   setShowEspaceModal(false);
                   resetEspaceForm();
                 }}
-                disabled={isSubmitting}
               >
                 <Text style={styles.cancelButtonText}>Annuler</Text>
               </TouchableOpacity>
-              
+
               <TouchableOpacity
-                style={[styles.modalButton, styles.submitButton]}
+                style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
                 onPress={handleSubmitEspace}
                 disabled={isSubmitting}
               >
                 <Text style={styles.submitButtonText}>
-                  {isSubmitting ? '...' : (selectedEspace ? 'Modifier' : 'Créer')}
+                  {isSubmitting ? 'Enregistrement...' : (selectedEspace ? 'Modifier' : 'Créer')}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1016,82 +1006,39 @@ const GestionEspacesHierarchie = ({ navigation }: any) => {
         </View>
       </Modal>
 
-      {/* Modal Ajout/Modification Sous-espace */}
-      <Modal
-        visible={showSousEspaceModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => {
-          setShowSousEspaceModal(false);
-          resetSousEspaceForm();
-        }}
-      >
+      {/* Modal Sous-espace */}
+      <Modal visible={showSousEspaceModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>
-              {selectedSousEspace ? 'Modifier le sous-espace' : 'Nouveau sous-espace'}
-            </Text>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {selectedSousEspace ? 'Modifier le sous-espace' : 'Nouveau Sous-espace'}
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowSousEspaceModal(false);
+                  resetSousEspaceForm();
+                }}
+              >
+                <Text style={styles.modalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
 
-            <ScrollView style={styles.formContainer}>
+            <ScrollView style={styles.modalBody}>
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Espace parent *</Text>
-                <View style={styles.dropdown}>
-                  <Text style={styles.dropdownText}>
-                    {espaces.find(e => e.id === sousEspaceForm.espaceParentId)?.nom || 'Sélectionner un espace'}
-                  </Text>
-                  <Text style={styles.dropdownIcon}>▼</Text>
-                </View>
-                <ScrollView style={styles.dropdownOptions}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   {espaces.map(espace => (
                     <TouchableOpacity
                       key={espace.id}
-                      style={styles.dropdownOption}
-                      onPress={() => setSousEspaceForm(prev => ({ ...prev, espaceParentId: espace.id }))}
-                    >
-                      <Text style={styles.dropdownOptionText}>{espace.nom}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Numéro *</Text>
-                <TextInput
-                  style={styles.input}
-                  value={sousEspaceForm.numero}
-                  onChangeText={(text) => setSousEspaceForm(prev => ({ ...prev, numero: text }))}
-                  placeholder="Ex: 101, A1, TOIL-1..."
-                />
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Nom</Text>
-                <TextInput
-                  style={styles.input}
-                  value={sousEspaceForm.nom}
-                  onChangeText={(text) => setSousEspaceForm(prev => ({ ...prev, nom: text }))}
-                  placeholder="Ex: Chambre Double, Suite Présidentielle..."
-                />
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Type</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.typesContainer}>
-                  {typesSousEspace.map(type => (
-                    <TouchableOpacity
-                      key={type.value}
                       style={[
-                        styles.typeChip,
-                        sousEspaceForm.type === type.value && styles.typeChipActive
+                        styles.espaceOption,
+                        sousEspaceForm.espaceParentId === espace.id && styles.espaceOptionActive
                       ]}
-                      onPress={() => setSousEspaceForm(prev => ({ ...prev, type: type.value }))}
+                      onPress={() => setSousEspaceForm({ ...sousEspaceForm, espaceParentId: espace.id })}
                     >
-                      <Text style={styles.typeChipIcon}>{type.icon}</Text>
-                      <Text style={[
-                        styles.typeChipText,
-                        sousEspaceForm.type === type.value && styles.typeChipTextActive
-                      ]}>
-                        {type.label}
+                      <Text style={styles.espaceOptionText}>
+                        {espace.nom} ({espace.numero})
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -1099,75 +1046,106 @@ const GestionEspacesHierarchie = ({ navigation }: any) => {
               </View>
 
               <View style={styles.formRow}>
-                <View style={[styles.formGroup, styles.formGroupHalf]}>
-                  <Text style={styles.label}>Superficie (m²)</Text>
+                <View style={styles.formHalf}>
+                  <Text style={styles.label}>Numéro *</Text>
                   <TextInput
                     style={styles.input}
-                    value={sousEspaceForm.superficie}
-                    onChangeText={(text) => setSousEspaceForm(prev => ({ ...prev, superficie: text }))}
-                    placeholder="Ex: 25"
-                    keyboardType="numeric"
+                    placeholder="Ex: 101"
+                    value={sousEspaceForm.numero}
+                    onChangeText={(text) => setSousEspaceForm({ ...sousEspaceForm, numero: text })}
                   />
                 </View>
 
-                <View style={[styles.formGroup, styles.formGroupHalf]}>
-                  <Text style={styles.label}>Capacité</Text>
+                <View style={styles.formHalf}>
+                  <Text style={styles.label}>Type</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    {typesSousEspace.map(type => (
+                      <TouchableOpacity
+                        key={type.value}
+                        style={[
+                          styles.typeOption,
+                          sousEspaceForm.type === type.value && styles.typeOptionActive
+                        ]}
+                        onPress={() => setSousEspaceForm({ ...sousEspaceForm, type: type.value })}
+                      >
+                        <Text style={styles.typeOptionText}>{type.icon}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Nom (optionnel)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Ex: Suite Présidentielle"
+                  value={sousEspaceForm.nom}
+                  onChangeText={(text) => setSousEspaceForm({ ...sousEspaceForm, nom: text })}
+                />
+              </View>
+
+              <View style={styles.formRow}>
+                <View style={styles.formHalf}>
+                  <Text style={styles.label}>Superficie (m²)</Text>
                   <TextInput
                     style={styles.input}
-                    value={sousEspaceForm.capacite}
-                    onChangeText={(text) => setSousEspaceForm(prev => ({ ...prev, capacite: text }))}
+                    placeholder="Ex: 25"
+                    keyboardType="numeric"
+                    value={sousEspaceForm.superficie}
+                    onChangeText={(text) => setSousEspaceForm({ ...sousEspaceForm, superficie: text })}
+                  />
+                </View>
+
+                <View style={styles.formHalf}>
+                  <Text style={styles.label}>Capacité (pers.)</Text>
+                  <TextInput
+                    style={styles.input}
                     placeholder="Ex: 2"
                     keyboardType="numeric"
+                    value={sousEspaceForm.capacite}
+                    onChangeText={(text) => setSousEspaceForm({ ...sousEspaceForm, capacite: text })}
                   />
                 </View>
               </View>
 
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Statut</Text>
-                <View style={styles.statusContainer}>
-                  {['libre', 'occupe', 'maintenance', 'nettoyage'].map(statut => (
+                <View style={styles.statusOptions}>
+                  {['libre', 'maintenance'].map(status => (
                     <TouchableOpacity
-                      key={statut}
+                      key={status}
                       style={[
-                        styles.statusChip,
-                        sousEspaceForm.statut === statut && styles.statusChipActive
+                        styles.statusOption,
+                        sousEspaceForm.statut === status && styles.statusOptionActive
                       ]}
-                      onPress={() => setSousEspaceForm(prev => ({ ...prev, statut }))}
+                      onPress={() => setSousEspaceForm({ ...sousEspaceForm, statut: status })}
                     >
-                      <Text style={[
-                        styles.statusChipText,
-                        sousEspaceForm.statut === statut && styles.statusChipTextActive
-                      ]}>
-                        {statut === 'libre' && '🟢 Libre'}
-                        {statut === 'occupe' && '🔴 Occupé'}
-                        {statut === 'maintenance' && '🟡 Maintenance'}
-                        {statut === 'nettoyage' && '🔵 Nettoyage'}
-                      </Text>
+                      <Text style={styles.statusOptionText}>{status}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
               </View>
             </ScrollView>
 
-            <View style={styles.modalActions}>
+            <View style={styles.modalFooter}>
               <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
+                style={styles.cancelButton}
                 onPress={() => {
                   setShowSousEspaceModal(false);
                   resetSousEspaceForm();
                 }}
-                disabled={isSubmitting}
               >
                 <Text style={styles.cancelButtonText}>Annuler</Text>
               </TouchableOpacity>
-              
+
               <TouchableOpacity
-                style={[styles.modalButton, styles.submitButton]}
+                style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
                 onPress={handleSubmitSousEspace}
                 disabled={isSubmitting}
               >
                 <Text style={styles.submitButtonText}>
-                  {isSubmitting ? '...' : (selectedSousEspace ? 'Modifier' : 'Créer')}
+                  {isSubmitting ? 'Enregistrement...' : (selectedSousEspace ? 'Modifier' : 'Créer')}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1175,117 +1153,72 @@ const GestionEspacesHierarchie = ({ navigation }: any) => {
         </View>
       </Modal>
 
-      {/* Modal Catégorie personnalisée */}
-      <Modal
-        visible={showCategorieModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => {
-          setShowCategorieModal(false);
-          resetCategorieForm();
-        }}
-      >
+      {/* Modal Catégorie */}
+      <Modal visible={showCategorieModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Nouvelle catégorie</Text>
-
-            <ScrollView style={styles.formContainer}>
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Nom de la catégorie *</Text>
-                <TextInput
-                  style={styles.input}
-                  value={categorieForm.nom}
-                  onChangeText={(text) => setCategorieForm(prev => ({ ...prev, nom: text }))}
-                  placeholder="Ex: Espace Wellness, Zone Technique..."
-                />
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Type</Text>
-                <View style={styles.typeSelector}>
-                  <TouchableOpacity
-                    style={[
-                      styles.typeOption,
-                      categorieForm.type === 'public' && styles.typeOptionActive
-                    ]}
-                    onPress={() => setCategorieForm(prev => ({ ...prev, type: 'public' }))}
-                  >
-                    <Text style={styles.typeOptionIcon}>👥</Text>
-                    <Text style={styles.typeOptionText}>Public</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity
-                    style={[
-                      styles.typeOption,
-                      categorieForm.type === 'professionnel' && styles.typeOptionActive
-                    ]}
-                    onPress={() => setCategorieForm(prev => ({ ...prev, type: 'professionnel' }))}
-                  >
-                    <Text style={styles.typeOptionIcon}>👨‍💼</Text>
-                    <Text style={styles.typeOptionText}>Professionnel</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Couleur</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.colorsContainer}>
-                  {['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#6366F1', '#14B8A6'].map(color => (
-                    <TouchableOpacity
-                      key={color}
-                      style={[
-                        styles.colorOption,
-                        { backgroundColor: color },
-                        categorieForm.couleur === color && styles.colorOptionActive
-                      ]}
-                      onPress={() => setCategorieForm(prev => ({ ...prev, couleur: color }))}
-                    >
-                      {categorieForm.couleur === color && (
-                        <Text style={styles.colorCheckmark}>✓</Text>
-                      )}
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Icône</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.iconsContainer}>
-                  {['🏢', '🛏️', '🍽️', '🚿', '🧺', '🏊', '💼', '🚪', '🛋️', '📊'].map(icon => (
-                    <TouchableOpacity
-                      key={icon}
-                      style={[
-                        styles.iconOption,
-                        categorieForm.icone === icon && styles.iconOptionActive
-                      ]}
-                      onPress={() => setCategorieForm(prev => ({ ...prev, icone: icon }))}
-                    >
-                      <Text style={styles.iconText}>{icon}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-            </ScrollView>
-
-            <View style={styles.modalActions}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Nouvelle Catégorie</Text>
               <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
                 onPress={() => {
                   setShowCategorieModal(false);
                   resetCategorieForm();
                 }}
-                disabled={isSubmitting}
+              >
+                <Text style={styles.modalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody}>
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Nom de la catégorie *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Ex: Espace Wellness"
+                  value={categorieForm.nom}
+                  onChangeText={(text) => setCategorieForm({ ...categorieForm, nom: text })}
+                />
+              </View>
+
+              <View style={styles.formRow}>
+                <View style={styles.formHalf}>
+                  <Text style={styles.label}>Type</Text>
+                  {['public', 'professionnel'].map(type => (
+                    <TouchableOpacity
+                      key={type}
+                      style={[
+                        styles.typeOption,
+                        categorieForm.type === type && styles.typeOptionActive
+                      ]}
+                      onPress={() => setCategorieForm({ ...categorieForm, type })}
+                    >
+                      <Text style={styles.typeOptionText}>
+                        {type.charAt(0).toUpperCase() + type.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => {
+                  setShowCategorieModal(false);
+                  resetCategorieForm();
+                }}
               >
                 <Text style={styles.cancelButtonText}>Annuler</Text>
               </TouchableOpacity>
-              
+
               <TouchableOpacity
-                style={[styles.modalButton, styles.submitButton]}
+                style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
                 onPress={handleSubmitCategorie}
                 disabled={isSubmitting}
               >
                 <Text style={styles.submitButtonText}>
-                  {isSubmitting ? '...' : 'Créer'}
+                  {isSubmitting ? 'Enregistrement...' : 'Créer'}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1294,110 +1227,93 @@ const GestionEspacesHierarchie = ({ navigation }: any) => {
       </Modal>
 
       {/* Modal Assignation */}
-      <Modal
-        visible={showAssignModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => {
-          setShowAssignModal(false);
-          resetAssignForm();
-        }}
-      >
+      <Modal visible={showAssignModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>
-              Assigner un employé - {selectedEspace?.nom || selectedSousEspace?.numero}
-            </Text>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Assigner un employé</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowAssignModal(false);
+                  resetAssignForm();
+                  setSelectedEspace(null);
+                  setSelectedSousEspace(null);
+                }}
+              >
+                <Text style={styles.modalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
 
-            <ScrollView style={styles.formContainer}>
+            <ScrollView style={styles.modalBody}>
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Employé *</Text>
-                <View style={styles.dropdown}>
-                  <Text style={styles.dropdownText}>
-                    {employees.find(e => e.id === assignForm.employeId)?.name || 'Sélectionner un employé'}
-                  </Text>
-                  <Text style={styles.dropdownIcon}>▼</Text>
-                </View>
-                <ScrollView style={styles.dropdownOptions}>
-                  {employees.map(employe => (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {employees.map(emp => (
                     <TouchableOpacity
-                      key={employe.id}
-                      style={styles.dropdownOption}
-                      onPress={() => setAssignForm(prev => ({ ...prev, employeId: employe.id }))}
+                      key={emp.id}
+                      style={[
+                        styles.employeeOption,
+                        assignForm.employeId === emp.id && styles.employeeOptionActive
+                      ]}
+                      onPress={() => setAssignForm({ ...assignForm, employeId: emp.id })}
                     >
-                      <Text style={styles.dropdownOptionText}>
-                        {employe.name} ({employe.role})
-                      </Text>
+                      <Text style={styles.employeeOptionText}>{emp.name}</Text>
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
               </View>
 
               <View style={styles.formGroup}>
-                <Text style={styles.label}>Type de tâche *</Text>
-                <ScrollView style={styles.tasksGrid}>
+                <Text style={styles.label}>Type de tâche</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   {typesTache.map(tache => (
                     <TouchableOpacity
                       key={tache.value}
                       style={[
-                        styles.taskChip,
-                        assignForm.typeTache === tache.value && styles.taskChipActive
+                        styles.tacheOption,
+                        assignForm.typeTache === tache.value && styles.tacheOptionActive
                       ]}
-                      onPress={() => setAssignForm(prev => ({ ...prev, typeTache: tache.value }))}
+                      onPress={() => setAssignForm({ ...assignForm, typeTache: tache.value })}
                     >
-                      <Text style={[
-                        styles.taskChipText,
-                        assignForm.typeTache === tache.value && styles.taskChipTextActive
-                      ]}>
-                        {tache.label}
-                      </Text>
+                      <Text style={styles.tacheOptionText}>{tache.label}</Text>
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
               </View>
 
               <View style={styles.formGroup}>
-                <Text style={styles.label}>Date de début</Text>
+                <Text style={styles.label}>Notes</Text>
                 <TextInput
-                  style={styles.input}
-                  value={assignForm.dateDebut}
-                  onChangeText={(text) => setAssignForm(prev => ({ ...prev, dateDebut: text }))}
-                  placeholder="YYYY-MM-DD"
-                />
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Notes (optionnel)</Text>
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  value={assignForm.notes}
-                  onChangeText={(text) => setAssignForm(prev => ({ ...prev, notes: text }))}
-                  placeholder="Instructions particulières..."
+                  style={[styles.input, styles.textarea]}
+                  placeholder="Notes supplémentaires..."
                   multiline
                   numberOfLines={3}
+                  value={assignForm.notes}
+                  onChangeText={(text) => setAssignForm({ ...assignForm, notes: text })}
                 />
               </View>
             </ScrollView>
 
-            <View style={styles.modalActions}>
+            <View style={styles.modalFooter}>
               <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
+                style={styles.cancelButton}
                 onPress={() => {
                   setShowAssignModal(false);
                   resetAssignForm();
+                  setSelectedEspace(null);
+                  setSelectedSousEspace(null);
                 }}
-                disabled={isSubmitting}
               >
                 <Text style={styles.cancelButtonText}>Annuler</Text>
               </TouchableOpacity>
-              
+
               <TouchableOpacity
-                style={[styles.modalButton, styles.submitButton]}
+                style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
                 onPress={handleAssign}
                 disabled={isSubmitting}
               >
                 <Text style={styles.submitButtonText}>
-                  {isSubmitting ? '...' : 'Assigner'}
+                  {isSubmitting ? 'Assignation...' : 'Assigner'}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1406,37 +1322,31 @@ const GestionEspacesHierarchie = ({ navigation }: any) => {
       </Modal>
 
       {/* Modal QR Code */}
-      <Modal
-        visible={showQRModal}
-        animationType="fade"
-        transparent={true}
-        onRequestClose={() => setShowQRModal(false)}
-      >
-        <View style={styles.qrModalOverlay}>
-          <View style={styles.qrModalContent}>
-            <Text style={styles.qrModalTitle}>QR Code - {qrCodeData.titre}</Text>
-            
-            <View style={styles.qrCodeContainer}>
-              <Text style={styles.qrPlaceholder}>
-                📱 QR Code Generator\n\n
-                ID: {qrCodeData.valeur}\n
-                {qrCodeData.titre}
+      {showQRModal && (
+        <Modal visible={showQRModal} animationType="fade" transparent>
+          <View style={styles.qrOverlay}>
+            <View style={styles.qrContent}>
+              <TouchableOpacity
+                style={styles.qrClose}
+                onPress={() => setShowQRModal(false)}
+              >
+                <Text style={styles.qrCloseText}>✕</Text>
+              </TouchableOpacity>
+              
+              <Text style={styles.qrTitle}>{qrCodeData.titre}</Text>
+              
+              <View style={styles.qrCodeContainer}>
+                <Text style={styles.qrPlaceholder}>📱 QR Code</Text>
+                <Text style={styles.qrValue}>{qrCodeData.valeur}</Text>
+              </View>
+
+              <Text style={styles.qrSubtitle}>
+                À implémenter avec react-native-qrcode-svg
               </Text>
             </View>
-            
-            <Text style={styles.qrInstructions}>
-              Scannez ce QR code pour accéder rapidement aux détails de cet espace
-            </Text>
-            
-            <TouchableOpacity
-              style={styles.qrCloseButton}
-              onPress={() => setShowQRModal(false)}
-            >
-              <Text style={styles.qrCloseButtonText}>Fermer</Text>
-            </TouchableOpacity>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
     </View>
   );
 };
@@ -1446,726 +1356,671 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8FAFC',
   },
+  
+  // Header avec moins d'espace en bas
   header: {
-    backgroundColor: '#1E40AF',
-    padding: 20,
-    paddingTop: Platform.OS === 'ios' ? 60 : 40,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: 'white',
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: 'rgba(255,255,255,0.8)',
-    marginBottom: 20,
-  },
-  statsContainer: {
-    flexDirection: 'row',
-  },
-  statCard: {
-    padding: 16,
-    borderRadius: 12,
-    marginRight: 12,
-    minWidth: 140,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  statHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  statIcon: {
-    fontSize: 20,
-    marginRight: 8,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.9)',
-    fontWeight: '500',
-  },
-  statValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: 'white',
-  },
-  filtersContainer: {
-    backgroundColor: 'white',
-    padding: 16,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'ios' ? 50 : 30,
+    paddingBottom: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
-  searchContainer: {
-    position: 'relative',
-    marginBottom: 12,
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 2,
   },
-  searchInput: {
-    backgroundColor: '#F3F4F6',
-    padding: 12,
-    paddingLeft: 40,
-    borderRadius: 8,
-    fontSize: 16,
+  title: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#1F2937',
   },
-  searchIcon: {
-    position: 'absolute',
-    left: 12,
-    top: 12,
-    fontSize: 16,
+  subtitle: {
+    fontSize: 12,
     color: '#6B7280',
   },
-  categoriesFilter: {
+  headerActions: {
     flexDirection: 'row',
+    gap: 6,
   },
-  filterChip: {
+  headerButton: {
+    backgroundColor: '#3B82F6',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerButtonText: {
+    fontSize: 16,
+    color: '#FFFFFF',
+  },
+  
+  // Stats Container - ESPACE VERTICAL RÉDUIT
+  statsContainer: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingTop: 8,
+    paddingBottom: 4,
+    gap: 10,
+  },
+  
+  // StatCard ultra compacte
+  statCard: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    minWidth: 100,
+    height: 50,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 1,
+    elevation: 1,
+  },
+  statIcon: {
+    fontSize: 16,
+  },
+  statTextContainer: {
+    flex: 1,
+  },
+  statLabel: {
+    fontSize: 9,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  statValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1F2937',
+  },
+  
+  // Search Container - RAPPROCHÉ des stats
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 4,
+  },
+  searchInput: {
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#D1D5DB',
-    marginRight: 8,
-    backgroundColor: 'white',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#1F2937',
+  },
+  
+  // Categories Filter - RAPPROCHÉ de la recherche
+  categoriesFilter: {
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 8,
+    gap: 6,
+  },
+  filterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
   },
   filterChipActive: {
     backgroundColor: '#3B82F6',
     borderColor: '#3B82F6',
   },
   filterChipText: {
-    fontSize: 14,
+    fontSize: 11,
+    fontWeight: '600',
     color: '#6B7280',
-    fontWeight: '500',
   },
   filterChipTextActive: {
-    color: 'white',
+    color: '#FFFFFF',
   },
-  espacesList: {
+  
+  // List Container - COMMENCE IMMÉDIATEMENT après les filtres
+  listContainer: {
     flex: 1,
-    padding: 16,
+    marginTop: 0,
+  },
+  
+  espacesList: {
+    padding: 12,
+    gap: 12,
   },
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 40,
+    paddingVertical: 60,
+    paddingHorizontal: 40,
   },
-  emptyStateIcon: {
-    fontSize: 64,
+  emptyIcon: {
+    fontSize: 48,
     marginBottom: 16,
+    opacity: 0.5,
   },
-  emptyStateTitle: {
-    fontSize: 20,
+  emptyTitle: {
+    fontSize: 18,
     fontWeight: 'bold',
-    color: '#374151',
-    marginBottom: 8,
-  },
-  emptyStateText: {
-    fontSize: 16,
     color: '#6B7280',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptyText: {
+    fontSize: 14,
+    color: '#9CA3AF',
     textAlign: 'center',
     marginBottom: 20,
   },
-  emptyStateButton: {
+  emptyButton: {
     backgroundColor: '#3B82F6',
-    paddingHorizontal: 24,
+    paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 8,
   },
-  emptyStateButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 16,
+  emptyButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 14,
   },
+  
+  // Carte Espace compacte
   espaceCard: {
-    backgroundColor: 'white',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    marginBottom: 16,
+    overflow: 'hidden',
     borderWidth: 2,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    overflow: 'hidden',
+    shadowRadius: 3,
+    elevation: 2,
   },
   espaceHeader: {
-    padding: 16,
+    padding: 12,
   },
   espaceHeaderContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
   },
   espaceInfo: {
     flexDirection: 'row',
+    alignItems: 'center',
     flex: 1,
   },
   espaceIcon: {
-    fontSize: 24,
-    marginRight: 12,
+    fontSize: 20,
+    marginRight: 10,
   },
   espaceTextContainer: {
     flex: 1,
   },
   espaceNom: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
-    color: 'white',
-    marginBottom: 8,
+    color: '#FFFFFF',
+    marginBottom: 4,
   },
   espaceTags: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-  },
-  tag: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    marginRight: 6,
-    marginBottom: 4,
+    alignItems: 'center',
   },
   tagText: {
-    fontSize: 12,
-    color: 'white',
+    fontSize: 11,
+    color: '#FFFFFF',
     fontWeight: '500',
+    marginRight: 6,
+    opacity: 0.9,
   },
-  espaceActions: {
-    flexDirection: 'row',
-    marginLeft: 12,
-  },
-  actionButton: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 6,
-    marginLeft: 6,
-  },
-  actionButtonText: {
-    color: 'white',
-    fontSize: 12,
+  expandIcon: {
+    fontSize: 14,
+    color: '#FFFFFF',
     fontWeight: 'bold',
+    marginLeft: 8,
+  },
+  
+  // Contenu déplié
+  expandedContent: {
+    padding: 12,
+    backgroundColor: '#F9FAFB',
+    gap: 12,
+  },
+  quickActions: {
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+  },
+  quickAction: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  deleteAction: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FECACA',
+  },
+  quickActionText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#374151',
   },
   assignationsContainer: {
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.3)',
+    backgroundColor: '#FFFFFF',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   assignationsTitle: {
-    color: 'white',
+    fontSize: 12,
     fontWeight: 'bold',
+    color: '#374151',
     marginBottom: 8,
   },
   assignationItem: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    padding: 8,
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    backgroundColor: '#F3F4F6',
     borderRadius: 6,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   assignationText: {
-    color: 'white',
-    fontSize: 12,
+    fontSize: 11,
+    color: '#374151',
+    fontWeight: '500',
     flex: 1,
   },
-  assignationDate: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 10,
-    marginHorizontal: 8,
-  },
   removeButton: {
-    backgroundColor: 'rgba(239,68,68,0.8)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
+    backgroundColor: '#EF4444',
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   removeButtonText: {
-    color: 'white',
-    fontSize: 10,
+    color: '#FFFFFF',
+    fontSize: 12,
     fontWeight: 'bold',
   },
   sousEspacesContainer: {
-    backgroundColor: '#F9FAFB',
-    padding: 12,
+    gap: 8,
   },
+  sousEspacesTitle: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#374151',
+    marginBottom: 4,
+  },
+  
+  // Carte Sous-espace compacte
   sousEspaceCard: {
-    backgroundColor: 'white',
-    padding: 12,
+    backgroundColor: '#FFFFFF',
+    padding: 10,
     borderRadius: 8,
-    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
+    alignItems: 'center',
   },
-  sousEspaceInfo: {
+  sousEspaceMain: {
     flexDirection: 'row',
+    alignItems: 'center',
     flex: 1,
   },
   sousEspaceIcon: {
-    fontSize: 20,
-    marginRight: 12,
+    fontSize: 18,
+    marginRight: 10,
   },
   sousEspaceDetails: {
     flex: 1,
   },
   sousEspaceNom: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    marginBottom: 4,
-  },
-  sousEspaceType: {
     fontSize: 14,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 2,
+  },
+  sousEspaceInfo: {
+    fontSize: 11,
     color: '#6B7280',
-    marginBottom: 8,
   },
   sousEspaceAssignations: {
-    marginTop: 8,
-  },
-  sousEspaceAssignTitle: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#374151',
-    marginBottom: 4,
+    marginTop: 6,
+    gap: 4,
   },
   sousEspaceAssignItem: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'center',
     backgroundColor: '#F3F4F6',
-    padding: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
     borderRadius: 4,
-    marginBottom: 4,
   },
   sousEspaceAssignText: {
-    fontSize: 12,
+    fontSize: 10,
     color: '#374151',
+    fontWeight: '500',
     flex: 1,
   },
   sousEspaceRemoveButton: {
     backgroundColor: '#EF4444',
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    alignItems: 'center',
+    width: 16,
+    height: 16,
+    borderRadius: 8,
     justifyContent: 'center',
-    marginLeft: 8,
+    alignItems: 'center',
+    marginLeft: 6,
   },
   sousEspaceRemoveText: {
-    color: 'white',
-    fontSize: 12,
+    color: '#FFFFFF',
+    fontSize: 10,
     fontWeight: 'bold',
   },
   sousEspaceActions: {
     flexDirection: 'row',
-    marginLeft: 12,
+    gap: 4,
+    marginLeft: 8,
   },
   sousEspaceActionBtn: {
     backgroundColor: '#3B82F6',
-    width: 32,
-    height: 32,
+    width: 28,
+    height: 28,
     borderRadius: 6,
-    alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 6,
+    alignItems: 'center',
   },
   sousEspaceActionText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: 'bold',
+    fontSize: 12,
+    color: '#FFFFFF',
   },
-  fabContainer: {
-    position: 'absolute',
-    bottom: 20,
-    right: 20,
-    alignItems: 'flex-end',
-  },
-  fab: {
-    backgroundColor: '#3B82F6',
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  fabSecondary: {
-    backgroundColor: '#8B5CF6',
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-  },
-  fabText: {
-    fontSize: 20,
-    color: 'white',
-  },
+  
+  // Modales
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: 'white',
+    backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: '90%',
+    maxHeight: '85%',
   },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    padding: 20,
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
-  formContainer: {
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1F2937',
+  },
+  modalClose: {
+    fontSize: 20,
+    color: '#6B7280',
+    fontWeight: 'bold',
+  },
+  modalBody: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     maxHeight: 400,
-    padding: 20,
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
   },
   formGroup: {
-    marginBottom: 20,
+    marginBottom: 16,
   },
   formRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    gap: 12,
   },
-  formGroupHalf: {
-    width: '48%',
+  formHalf: {
+    flex: 1,
   },
   label: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: '#374151',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   input: {
     backgroundColor: '#F9FAFB',
     borderWidth: 1,
     borderColor: '#D1D5DB',
     borderRadius: 8,
-    padding: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     fontSize: 16,
+    color: '#1F2937',
   },
-  textArea: {
+  textarea: {
     minHeight: 80,
     textAlignVertical: 'top',
   },
-  typesContainer: {
-    flexDirection: 'row',
-  },
-  typeChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F3F4F6',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-  },
-  typeChipActive: {
-    backgroundColor: '#3B82F6',
-    borderColor: '#3B82F6',
-  },
-  typeChipIcon: {
-    fontSize: 16,
-    marginRight: 6,
-  },
-  typeChipText: {
-    fontSize: 14,
-    color: '#374151',
-    fontWeight: '500',
-  },
-  typeChipTextActive: {
-    color: 'white',
-  },
-  categoriesGrid: {
-    maxHeight: 200,
-  },
-  categorieCard: {
-    borderWidth: 2,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
-    position: 'relative',
-  },
-  categorieIcon: {
-    fontSize: 20,
-    marginBottom: 4,
-  },
-  categorieName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    marginBottom: 2,
-  },
-  categorieExemples: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  checkmark: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  dropdown: {
-    backgroundColor: '#F9FAFB',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    padding: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  dropdownText: {
-    fontSize: 16,
-    color: '#374151',
-  },
-  dropdownIcon: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  dropdownOptions: {
-    maxHeight: 150,
-    backgroundColor: 'white',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    marginTop: 4,
-  },
-  dropdownOption: {
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  dropdownOptionText: {
-    fontSize: 16,
-    color: '#374151',
-  },
-  statusContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  statusChip: {
-    backgroundColor: '#F3F4F6',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 8,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-  },
-  statusChipActive: {
-    backgroundColor: '#3B82F6',
-    borderColor: '#3B82F6',
-  },
-  statusChipText: {
-    fontSize: 14,
-    color: '#374151',
-    fontWeight: '500',
-  },
-  statusChipTextActive: {
-    color: 'white',
-  },
-  typeSelector: {
-    flexDirection: 'row',
-  },
   typeOption: {
-    flex: 1,
-    alignItems: 'center',
     backgroundColor: '#F3F4F6',
-    padding: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 8,
     marginRight: 8,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
   },
   typeOptionActive: {
     backgroundColor: '#3B82F6',
     borderColor: '#3B82F6',
   },
-  typeOptionIcon: {
-    fontSize: 24,
-    marginBottom: 8,
-  },
   typeOptionText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
     color: '#374151',
   },
-  colorsContainer: {
-    flexDirection: 'row',
-  },
-  colorOption: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    marginRight: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  colorOptionActive: {
-    borderWidth: 3,
-    borderColor: 'white',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  colorCheckmark: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  iconsContainer: {
-    flexDirection: 'row',
-  },
-  iconOption: {
-    width: 50,
-    height: 50,
+  categoryOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-    justifyContent: 'center',
     marginRight: 8,
     borderWidth: 2,
     borderColor: 'transparent',
   },
-  iconOptionActive: {
-    borderColor: '#3B82F6',
-    backgroundColor: '#DBEAFE',
+  categoryOptionActive: {
+    borderColor: '#FFFFFF',
   },
-  iconText: {
-    fontSize: 20,
+  categoryOptionText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
-  tasksGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  taskChip: {
+  espaceOption: {
     backgroundColor: '#F3F4F6',
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 20,
+    borderRadius: 8,
     marginRight: 8,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
   },
-  taskChipActive: {
+  espaceOptionActive: {
     backgroundColor: '#3B82F6',
     borderColor: '#3B82F6',
   },
-  taskChipText: {
-    fontSize: 14,
+  espaceOptionText: {
+    fontSize: 12,
+    fontWeight: '600',
     color: '#374151',
-    fontWeight: '500',
   },
-  taskChipTextActive: {
-    color: 'white',
-  },
-  modalActions: {
+  statusOptions: {
     flexDirection: 'row',
-    padding: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
+    gap: 8,
   },
-  modalButton: {
+  statusOption: {
     flex: 1,
-    padding: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: '#F3F4F6',
     borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
     alignItems: 'center',
-    justifyContent: 'center',
+  },
+  statusOptionActive: {
+    backgroundColor: '#3B82F6',
+    borderColor: '#3B82F6',
+  },
+  statusOptionText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  employeeOption: {
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginRight: 8,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+  },
+  employeeOptionActive: {
+    backgroundColor: '#3B82F6',
+    borderColor: '#3B82F6',
+  },
+  employeeOptionText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  tacheOption: {
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginRight: 8,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+  },
+  tacheOptionActive: {
+    backgroundColor: '#3B82F6',
+    borderColor: '#3B82F6',
+  },
+  tacheOptionText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#374151',
   },
   cancelButton: {
-    backgroundColor: '#F3F4F6',
-    marginRight: 12,
+    flex: 1,
+    backgroundColor: '#6B7280',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
   },
   cancelButtonText: {
-    color: '#374151',
-    fontSize: 16,
+    color: '#FFFFFF',
     fontWeight: '600',
+    fontSize: 14,
   },
   submitButton: {
+    flex: 1,
     backgroundColor: '#3B82F6',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  submitButtonDisabled: {
+    backgroundColor: '#9CA3AF',
   },
   submitButtonText: {
-    color: 'white',
-    fontSize: 16,
+    color: '#FFFFFF',
     fontWeight: '600',
+    fontSize: 14,
   },
-  qrModalOverlay: {
+  qrOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
     justifyContent: 'center',
+    alignItems: 'center',
   },
-  qrModalContent: {
-    backgroundColor: 'white',
-    borderRadius: 20,
+  qrContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
     padding: 24,
     alignItems: 'center',
-    margin: 20,
-    maxWidth: 400,
+    width: '85%',
   },
-  qrModalTitle: {
+  qrClose: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    backgroundColor: '#F3F4F6',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  qrCloseText: {
     fontSize: 20,
     fontWeight: 'bold',
+    color: '#6B7280',
+  },
+  qrTitle: {
+    fontSize: 18,
+    fontWeight: '700',
     color: '#1F2937',
-    marginBottom: 20,
+    marginBottom: 16,
     textAlign: 'center',
   },
   qrCodeContainer: {
-    backgroundColor: '#F9FAFB',
-    padding: 40,
+    backgroundColor: '#F3F4F6',
     borderRadius: 12,
-    marginBottom: 20,
+    padding: 24,
     alignItems: 'center',
-    justifyContent: 'center',
+    marginBottom: 16,
+    width: '100%',
   },
   qrPlaceholder: {
-    fontSize: 14,
+    fontSize: 48,
+    marginBottom: 12,
+  },
+  qrValue: {
+    fontSize: 12,
     color: '#6B7280',
-    textAlign: 'center',
-  },
-  qrInstructions: {
-    fontSize: 14,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  qrCloseButton: {
-    backgroundColor: '#3B82F6',
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  qrCloseButtonText: {
-    color: 'white',
-    fontSize: 16,
     fontWeight: '600',
+    textAlign: 'center',
+  },
+  qrSubtitle: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    textAlign: 'center',
   },
 });
 

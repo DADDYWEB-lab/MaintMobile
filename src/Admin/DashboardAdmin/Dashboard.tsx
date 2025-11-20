@@ -392,12 +392,14 @@ const AdminDashboard = ({ navigation }: AdminDashboardProps) => {
               onPress={() => navigation.navigate('Devis')}
 
             />
+
+                        
               <QuickActionCard
               title="Chat"
               description="Voir détails"
-              color="#768081ff"
+              color="#8f631cff"
               icon="💬​​"
-              onPress={() => navigation.navigate('Devis')}
+              onPress={() => navigation.navigate('Chat')}
 
             />
 
@@ -438,12 +440,17 @@ const AdminDashboard = ({ navigation }: AdminDashboardProps) => {
             
             <View style={styles.performanceRow}>
               <Text style={styles.performanceLabel}>Réclamations résolues</Text>
+
               <Text style={styles.performanceValue}>
                 {stats.totalReclamations > 0 
                   ? Math.round((stats.reclamationsResolues / stats.totalReclamations) * 100)
                   : 0}%
               </Text>
+
+
             </View>
+
+
             <View style={styles.progressBar}>
               <View 
                 style={[
@@ -457,6 +464,8 @@ const AdminDashboard = ({ navigation }: AdminDashboardProps) => {
                 ]} 
               />
             </View>
+
+
           </View>
         </View>
       </ScrollView>
@@ -467,24 +476,30 @@ const AdminDashboard = ({ navigation }: AdminDashboardProps) => {
 };
 
 const styles = StyleSheet.create({
+
   container: {
     flex: 1,
     backgroundColor: '#F3F4F6',
   },
+
   scrollView: {
     flex: 1,
   },
+
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#F3F4F6',
   },
+
   loadingText: {
     marginTop: 16,
     fontSize: 16,
     color: '#6B7280',
   },
+
+
   header: {
     backgroundColor: '#3B82F6',
     paddingHorizontal: 20,
@@ -493,30 +508,36 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 30,
     borderBottomRightRadius: 30,
   },
+
   headerTitle: {
     fontSize: 28,
     fontWeight: 'bold',
     color: '#FFFFFF',
     marginBottom: 4,
   },
+
   headerSubtitle: {
     fontSize: 16,
     color: '#DBEAFE',
   },
+
   section: {
     padding: 20,
   },
+
   sectionTitle: {
     fontSize: 20,
     fontWeight: '600',
     color: '#1F2937',
     marginBottom: 16,
   },
+
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
   },
+
   statCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
@@ -532,20 +553,24 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+
   statCardContent: {
     flex: 1,
   },
+
   statValue: {
     fontSize: 32,
     fontWeight: 'bold',
     color: '#1F2937',
     marginBottom: 4,
   },
+
   statLabel: {
     fontSize: 12,
     color: '#6B7280',
     fontWeight: '500',
   },
+
   statIcon: {
     width: 48,
     height: 48,
@@ -553,14 +578,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  statIconText: {
+
+    statIconText: {
     fontSize: 24,
   },
+
   actionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
   },
+
   actionCard: {
     borderRadius: 16,
     padding: 20,
@@ -571,20 +599,24 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+
   actionIcon: {
     fontSize: 32,
     marginBottom: 12,
   },
+
   actionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#FFFFFF',
     marginBottom: 4,
   },
+
   actionDescription: {
     fontSize: 12,
     color: 'rgba(255, 255, 255, 0.9)',
   },
+
   performanceCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
@@ -595,22 +627,26 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+
   performanceRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
   },
+
   performanceLabel: {
     fontSize: 14,
     color: '#6B7280',
     fontWeight: '500',
   },
+
   performanceValue: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#1F2937',
   },
+
   progressBar: {
     height: 8,
     backgroundColor: '#E5E7EB',
@@ -618,17 +654,20 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     overflow: 'hidden',
   },
+
   progressFill: {
     height: '100%',
     backgroundColor: '#3B82F6',
     borderRadius: 4,
   },
+
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
   },
+
   modalContent: {
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
@@ -636,15 +675,18 @@ const styles = StyleSheet.create({
     width: width - 40,
     maxWidth: 400,
   },
+
   modalTitle: {
     fontSize: 22,
     fontWeight: 'bold',
     color: '#1F2937',
     marginBottom: 20,
   },
-  modalDetails: {
+
+    modalDetails: {
     marginBottom: 20,
   },
+
   detailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -653,26 +695,31 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
-  detailLabel: {
+
+   detailLabel: {
     fontSize: 16,
     color: '#6B7280',
   },
-  detailValue: {
+
+    detailValue: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#1F2937',
   },
+
   modalButton: {
     backgroundColor: '#3B82F6',
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
   },
-  modalButtonText: {
+
+    modalButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
-  },
+  }
+  
 });
 
 export default AdminDashboard;

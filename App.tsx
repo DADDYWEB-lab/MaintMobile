@@ -14,6 +14,10 @@ import Reclamations from "./src/Admin/Reclamation/Reclamation";
 import Espaces from "./src/Admin/Espaces/Espaces";
 import Fournisseurs from "./src/Admin/Fournisseurs/Fournisseurs";
 import Devis from "./src/Admin/Devis/Devis";
+import Chat from './src/Admin/Chat/MessengerApp'
+
+
+
 const Stack = createNativeStackNavigator();
 
 export default function App() {
@@ -91,6 +95,12 @@ export default function App() {
         <Stack.Screen
           name="Devis"
           component={Devis}
+          options={{ title: "Gestion des Devis" }}
+        />
+
+          <Stack.Screen
+          name="Chat"
+          component={Chat}
           options={{ title: "Gestion des Devis" }}
         />
 
