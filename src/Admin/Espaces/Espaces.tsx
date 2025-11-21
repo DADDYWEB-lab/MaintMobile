@@ -1789,7 +1789,7 @@ const styles = StyleSheet.create({
   },
   modalFooter: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 12,        
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderTopWidth: 1,
@@ -1842,7 +1842,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: '#374151',
-  },
+
+  }
+  ,
+
   categoryOption: {
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -1851,9 +1854,12 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'transparent',
   },
+
   categoryOptionActive: {
     borderColor: '#FFFFFF',
   },
+
+
   categoryOptionText: {
     fontSize: 12,
     fontWeight: '600',

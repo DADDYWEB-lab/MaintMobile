@@ -14,7 +14,11 @@ import Reclamations from "./src/Admin/Reclamation/Reclamation";
 import Espaces from "./src/Admin/Espaces/Espaces";
 import Fournisseurs from "./src/Admin/Fournisseurs/Fournisseurs";
 import Devis from "./src/Admin/Devis/Devis";
-import Chat from './src/Admin/Chat/MessengerApp'
+import Chat from './src/Admin/Chat/Chat'
+
+
+
+
 
 
 
