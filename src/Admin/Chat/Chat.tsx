@@ -1,5 +1,5 @@
 // Messenger.tsx - Style Meta Messenger
-
+//@ts-nocheck
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
@@ -16,8 +16,8 @@ import {
   ActivityIndicator,
   StatusBar,
   ScrollView,
+  Alert,
 } from 'react-native';
-
 import {
   collection,
   query,
@@ -30,8 +30,12 @@ import {
   deleteDoc,
   where,
 } from 'firebase/firestore';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, auth } from '../../../firebaseConfig';
-
+import * as ImagePicker from 'react-native-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 
 const { width } = Dimensions.get('window');
 const isMobile = width < 768;
@@ -45,7 +49,13 @@ interface User {
   profileImage?: string;
   online: boolean;
   role?: string;
+}
 
+interface FileData {                                                                                            
+  name: string;
+  url: string;
+  type: 'image' | 'pdf' | 'other';
+  size?: number;
 }
 
 interface Message {
@@ -57,6 +67,7 @@ interface Message {
   timestamp: Date;
   reactions: { [key: string]: string[] };
   readBy: string[];
+  file?: FileData;
 }
 
 interface Conversation {
@@ -68,7 +79,6 @@ interface Conversation {
   readBy: string[];
   createdAt?: Date;
 }
-
 
 const Messenger = ({ navigation }: any) => {
   // États
@@ -82,9 +92,12 @@ const Messenger = ({ navigation }: any) => {
   const [showDeleteMenu, setShowDeleteMenu] = useState<string | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [showNewConversation, setShowNewConversation] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
   
   const messagesScrollRef = useRef<FlatList>(null);
   const currentUser = auth.currentUser;
+  const storage = getStorage();
 
   // Optimisation des listeners avec useCallback
   const currentUserUid = currentUser?.uid;
@@ -101,7 +114,8 @@ const Messenger = ({ navigation }: any) => {
     );
 
     const unsubConversations = onSnapshot(
-      q, (snapshot) => {
+      q,
+      (snapshot) => {
         const convsData = snapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data(),
@@ -136,7 +150,6 @@ const Messenger = ({ navigation }: any) => {
       orderBy('timestamp', 'asc')
     );
 
-
     const unsubMessages = onSnapshot(q, (snapshot) => {
       const messagesData = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -151,18 +164,13 @@ const Messenger = ({ navigation }: any) => {
   }, [selectedConversation?.id]);
 
   // Scroll automatique vers le dernier message
-
   useEffect(() => {
     if (messages.length > 0) {
       setTimeout(() => {
         messagesScrollRef.current?.scrollToEnd({ animated: true });
       }, 100);
     }
-
   }, [messages]);
-
-
-
 
   // Récupération des utilisateurs
   useEffect(() => {
@@ -186,17 +194,199 @@ const Messenger = ({ navigation }: any) => {
     return unsubUsers;
   }, [currentUserUid]);
 
+  // Fonction pour uploader un fichier
+  const uploadFile = async (fileUri: string, fileName: string, fileType: string): Promise<FileData | null> => {
+    try {
+      setUploadingFile(true);
+      
+      // Créer une référence unique pour le fichier
+      const fileExtension = fileName.split('.').pop();
+      const uniqueFileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExtension}`;
+      const storageRef = ref(storage, `conversations/${selectedConversation?.id}/${uniqueFileName}`);
+      
+      // Convertir le fichier en blob
+      const response = await fetch(fileUri);
+      const blob = await response.blob();
+      
+      // Uploader le fichier
+      const snapshot = await uploadBytes(storageRef, blob);
+      const downloadURL = await getDownloadURL(snapshot.ref);
+      
+      // Déterminer le type de fichier
+      let fileDataType: 'image' | 'pdf' | 'other' = 'other';
+      if (fileType.startsWith('image/')) {
+        fileDataType = 'image';
+      } else if (fileName.toLowerCase().endsWith('.pdf')) {
+        fileDataType = 'pdf';
+      }
+      
+      return {
+        name: fileName,
+        url: downloadURL,
+        type: fileDataType,
+        size: blob.size,
+      };
+    } catch (error) {
+      console.error('Erreur upload fichier:', error);
+      Alert.alert('Erreur', 'Impossible d\'uploader le fichier');
+      return null;
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
+  // Sélectionner une image depuis la galerie
+  const pickImage = async () => {
+    try {
+      setShowAttachmentMenu(false);
+      
+      const result = await ImagePicker.launchImageLibrary({
+        mediaType: 'photo',
+        quality: 0.8,
+        maxWidth: 1024,
+        maxHeight: 1024,
+      });
+      
+      if (result.assets && result.assets[0]) {
+        const file = result.assets[0];
+        await handleSendMessageWithFile(file.uri!, file.fileName || `image_${Date.now()}.jpg`, file.type || 'image/jpeg');
+      }
+    } catch (error) {
+      console.error('Erreur sélection image:', error);
+    }
+  };
+
+  // Prendre une photo
+  const takePhoto = async () => {
+    try {
+      setShowAttachmentMenu(false);
+      
+      const result = await ImagePicker.launchCamera({
+        mediaType: 'photo',
+        quality: 0.8,
+        maxWidth: 1024,
+        maxHeight: 1024,
+      });
+      
+      if (result.assets && result.assets[0]) {
+        const file = result.assets[0];
+        await handleSendMessageWithFile(file.uri!, `photo_${Date.now()}.jpg`, file.type || 'image/jpeg');
+      }
+    } catch (error) {
+      console.error('Erreur prise photo:', error);
+    }
+  };
+
+  // Sélectionner un document (PDF ou autre)
+  const pickDocument = async () => {
+    try {
+      setShowAttachmentMenu(false);
+      
+      const result = await DocumentPicker.getDocumentAsync({
+        type: '*/*', // Tous les types de fichiers
+        copyToCacheDirectory: true,
+      });
+      
+      if (result.assets && result.assets[0]) {
+        const file = result.assets[0];
+        await handleSendMessageWithFile(file.uri, file.name || `document_${Date.now()}`, file.mimeType || 'application/octet-stream');
+      }
+    } catch (error) {
+      console.error('Erreur sélection document:', error);
+    }
+  };
+
+  // Envoyer un message avec fichier
+  const handleSendMessageWithFile = async (fileUri: string, fileName: string, fileType: string) => {
+    if (!selectedConversation || !currentUserUid) return;
+
+    setSendingMessage(true);
+    try {
+      // Uploader le fichier
+      const fileData = await uploadFile(fileUri, fileName, fileType);
+      
+      if (!fileData) {
+        throw new Error('Échec de l\'upload du fichier');
+      }
+
+      const messageData = {
+        senderId: currentUserUid,
+        senderName: currentUser?.displayName || 'Utilisateur',
+        senderAvatar: currentUser?.photoURL || '',
+        text: '', // Texte vide pour les messages avec fichier
+        timestamp: serverTimestamp(),
+        reactions: {},
+        readBy: [currentUserUid],
+        file: fileData,
+      };
+
+      // Ajouter le message à Firestore
+      await addDoc(
+        collection(db, 'conversations', selectedConversation.id, 'messages'),
+        messageData
+      );
+
+      // Mettre à jour la conversation
+      const lastMessageText = fileData.type === 'image' ? '📷 Image' : '📄 Document';
+      await updateDoc(
+        doc(db, 'conversations', selectedConversation.id),
+        {
+          lastMessage: lastMessageText,
+          lastMessageTime: serverTimestamp(),
+          lastSenderId: currentUserUid,
+          readBy: [currentUserUid],
+        }
+      );
+
+    } catch (error) {
+      console.error('Erreur envoi message avec fichier:', error);
+      Alert.alert('Erreur', 'Impossible d\'envoyer le fichier');
+    } finally {
+      setSendingMessage(false);
+    }
+  };
+
+  // Télécharger et ouvrir un fichier
+  const handleOpenFile = async (file: FileData) => {
+    try {
+      if (file.type === 'image') {
+        // Pour les images, on peut les afficher dans un modal ou une vue agrandie
+        Alert.alert('Image', `Afficher l'image: ${file.name}`);
+        // Ici vous pouvez implémenter une vue modale pour l'image
+      } else {
+        // Pour les autres fichiers, utiliser expo-sharing
+        const fileUri = `${FileSystem.cacheDirectory}${file.name}`;
+        
+        // Télécharger le fichier
+        const { uri } = await FileSystem.downloadAsync(file.url, fileUri);
+        
+        // Ouvrir avec l'appareil partage
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(uri, {
+            mimeType: file.type === 'pdf' ? 'application/pdf' : '*/*',
+            dialogTitle: `Ouvrir ${file.name}`,
+          });
+        } else {
+          Alert.alert('Info', 'La fonction de partage n\'est pas disponible sur cet appareil');
+        }
+      }
+    } catch (error) {
+      console.error('Erreur ouverture fichier:', error);
+      Alert.alert('Erreur', 'Impossible d\'ouvrir le fichier');
+    }
+  };
+
   // Handlers mémoïsés
   const handleSendMessage = useCallback(async (likeMessage: string | null = null) => {
     const messageToSend = likeMessage || newMessage.trim();
-    if (!messageToSend || !selectedConversation || !currentUserUid) return;
+    if ((!messageToSend && !uploadingFile) || !selectedConversation || !currentUserUid) return;
 
     setSendingMessage(true);
     try {
       const messageData = {
         senderId: currentUserUid,
-        senderName: currentUser.displayName || 'Utilisateur',
-        senderAvatar: currentUser.photoURL || '',
+        senderName: currentUser?.displayName || 'Utilisateur',
+        senderAvatar: currentUser?.photoURL || '',
         text: messageToSend,
         timestamp: serverTimestamp(),
         reactions: {},
@@ -204,11 +394,9 @@ const Messenger = ({ navigation }: any) => {
       };
 
       await addDoc(
-        collection(db,'conversations', selectedConversation.id, 'messages'),
+        collection(db, 'conversations', selectedConversation.id, 'messages'),
         messageData
       );
-
-
 
       await updateDoc(
         doc(db, 'conversations', selectedConversation.id),
@@ -223,11 +411,10 @@ const Messenger = ({ navigation }: any) => {
       setNewMessage('');
     } catch (error) {
       console.error('Erreur lors de l\'envoi du message:', error);
-    } 
-    finally {
+    } finally {
       setSendingMessage(false);
     }
-  }, [selectedConversation, newMessage, currentUserUid]);
+  }, [selectedConversation, newMessage, currentUserUid, uploadingFile]);
 
   const handleReaction = useCallback(async (messageId: string, reaction: string) => {
     if (!selectedConversation || !currentUserUid) return;
@@ -357,6 +544,15 @@ const Messenger = ({ navigation }: any) => {
     };
   }, [conversations, users, searchTerm, currentUserUid]);
 
+  // Fonction pour générer des clés uniques
+  const getUniqueKey = useCallback((item: Conversation | User) => {
+    if ('participants' in item) {
+      return `conv_${item.id}`;
+    } else {
+      return `user_${item.uid || item.id}`;
+    }
+  }, []);
+
   // Composants internes
   const ConversationItem = useCallback(({ conv }: { conv: Conversation }) => {
     const participant = conv.participants?.find(p => p !== currentUserUid);
@@ -459,6 +655,49 @@ const Messenger = ({ navigation }: any) => {
     );
   }, [conversations, currentUserUid, handleCreateConversation]);
 
+  const FileMessage = ({ file, isOwn }: { file: FileData; isOwn: boolean }) => {
+    const getFileIcon = () => {
+      switch (file.type) {
+        case 'image':
+          return '🖼️';
+        case 'pdf':
+          return '📄';
+        default:
+          return '📎';
+      }
+    };
+
+    const formatFileSize = (bytes: number | undefined) => {
+      if (!bytes) return '';
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${(bytes / 1048576).toFixed(1)} MB`;
+    };
+
+    return (
+      <TouchableOpacity
+        style={[
+          styles.fileContainer,
+          isOwn ? styles.fileContainerOwn : styles.fileContainerOther,
+        ]}
+        onPress={() => handleOpenFile(file)}
+      >
+        <View style={styles.fileIconContainer}>
+          <Text style={styles.fileIcon}>{getFileIcon()}</Text>
+        </View>
+        <View style={styles.fileInfo}>
+          <Text style={styles.fileName} numberOfLines={1}>
+            {file.name}
+          </Text>
+          <Text style={styles.fileSize}>
+            {formatFileSize(file.size)}
+          </Text>
+        </View>
+        <Text style={styles.downloadIcon}>⬇️</Text>
+      </TouchableOpacity>
+    );
+  };
+
   const MessageBubble = useCallback(({ message }: { message: Message }) => {
     const isOwn = message.senderId === currentUserUid;
     const reactions = message.reactions || {};
@@ -478,12 +717,9 @@ const Messenger = ({ navigation }: any) => {
             source={{
               uri: message.senderAvatar || `https://i.pravatar.cc/150?img=${message.senderId}`,
             }}
-
-
             style={styles.messageAvatar}
           />
         )}
-
 
         <View
           style={[
@@ -491,25 +727,28 @@ const Messenger = ({ navigation }: any) => {
             isOwn ? styles.bubbleOwn : styles.bubbleOther,
           ]}
         >
+          {/* Afficher le fichier s'il y en a un */}
+          {message.file && (
+            <FileMessage file={message.file} isOwn={isOwn} />
+          )}
 
-        
-          <TouchableOpacity
-            onLongPress={() => setShowDeleteMenu(message.id)}
-            delayLongPress={300}
-            activeOpacity={1}
-          >
+          {/* Afficher le texte s'il y en a */}
+          {message.text ? (
+            <TouchableOpacity
+              onLongPress={() => setShowDeleteMenu(message.id)}
+              delayLongPress={300}
+              activeOpacity={1}
+            >
+              <Text style={[
+                styles.messageText,
+                isOwn ? styles.messageTextOwn : styles.messageTextOther,
+              ]}>
+                {message.text}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
 
-
-            <Text style={[
-              styles.messageText,
-              isOwn ? styles.messageTextOwn : styles.messageTextOther,
-            ]}>
-
-            
-              {message.text}
-            </Text>
-          </TouchableOpacity>
-
+          {/* Réactions */}
           {reactionKeys.length > 0 && (
             <View style={styles.reactionsContainer}>
               {reactionKeys.map(reaction => (
@@ -530,12 +769,8 @@ const Messenger = ({ navigation }: any) => {
           )}
         </View>
 
-
-
-
-
+        {/* Menu actions long-press */}
         {showDeleteMenu === message.id && (
-
           <View style={[styles.messageMenuContainer, menuPosition]}>
             {['❤️', '😂', '😲', '😢', '😡'].map(emoji => (
                 <TouchableOpacity
@@ -546,8 +781,6 @@ const Messenger = ({ navigation }: any) => {
                     <Text style={styles.menuOptionText}>{emoji}</Text>
                 </TouchableOpacity>
             ))}
-
-
 
             {isOwn && (
               <TouchableOpacity
@@ -560,9 +793,6 @@ const Messenger = ({ navigation }: any) => {
           </View>
         )}
       </View>
-
-
-             
     );
   }, [currentUserUid, showDeleteMenu, handleReaction, handleDeleteMessage]);
 
@@ -599,9 +829,7 @@ const Messenger = ({ navigation }: any) => {
           
           <View style={styles.conversationsHeader}>
             <View style={styles.headerTop}>
-
               <Text style={styles.headerTitle}>💬 Messages</Text>
-
               <View style={styles.headerActions}>
                 <TouchableOpacity 
                   style={styles.headerActionBtn} 
@@ -617,7 +845,6 @@ const Messenger = ({ navigation }: any) => {
 
             <View style={styles.searchContainer}>
               <Text style={styles.searchIcon}>🔍</Text>
-
               <TextInput
                 style={styles.searchInput}
                 placeholder="Chercher sur Messenger"
@@ -625,14 +852,13 @@ const Messenger = ({ navigation }: any) => {
                 onChangeText={setSearchTerm}
                 placeholderTextColor="#B0B3B9"
               />
-              
             </View>
           </View>
 
           <FlatList
             data={listData}
             renderItem={renderItem}
-            keyExtractor={(item) => item.id}
+            keyExtractor={getUniqueKey}
             scrollEnabled={true}
             ListEmptyComponent={
               <View style={styles.emptyList}>
@@ -707,14 +933,35 @@ const Messenger = ({ navigation }: any) => {
               ref={messagesScrollRef}
               data={messages}
               renderItem={({ item }) => <MessageBubble message={item} />}
-              keyExtractor={item => item.id}
+              keyExtractor={item => `msg_${item.id}`}
               contentContainerStyle={styles.messagesContainer}
               onScrollBeginDrag={() => setShowDeleteMenu(null)}
             />
 
+            {/* Menu d'attachments */}
+            {showAttachmentMenu && (
+              <View style={styles.attachmentMenu}>
+                <TouchableOpacity style={styles.attachmentOption} onPress={pickImage}>
+                  <Text style={styles.attachmentIcon}>🖼️</Text>
+                  <Text style={styles.attachmentText}>Galerie</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.attachmentOption} onPress={takePhoto}>
+                  <Text style={styles.attachmentIcon}>📷</Text>
+                  <Text style={styles.attachmentText}>Camera</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.attachmentOption} onPress={pickDocument}>
+                  <Text style={styles.attachmentIcon}>📄</Text>
+                  <Text style={styles.attachmentText}>Document</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             <View style={styles.inputContainer}>
-              <TouchableOpacity style={styles.attachBtn}>
-                <Text style={styles.attachIcon}>➕</Text>
+              <TouchableOpacity 
+                style={styles.attachBtn}
+                onPress={() => setShowAttachmentMenu(!showAttachmentMenu)}
+              >
+                <Text style={styles.attachIcon}>📎</Text>
               </TouchableOpacity>
 
               <TextInput
@@ -728,13 +975,17 @@ const Messenger = ({ navigation }: any) => {
                 onSubmitEditing={() => handleSendMessage()}
               />
 
-              {newMessage.trim() ? (
+              {(newMessage.trim() || uploadingFile) ? (
                 <TouchableOpacity
                   style={styles.sendBtn}
                   onPress={() => handleSendMessage()}
-                  disabled={sendingMessage}
+                  disabled={sendingMessage || uploadingFile}
                 >
-                  <Text style={styles.sendIcon}>➤</Text>
+                  {uploadingFile ? (
+                    <ActivityIndicator size="small" color="white" />
+                  ) : (
+                    <Text style={styles.sendIcon}>➤</Text>
+                  )}
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity 
@@ -767,6 +1018,8 @@ const Messenger = ({ navigation }: any) => {
         transparent
         onRequestClose={() => setShowNewConversation(false)}
       >
+
+      
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
@@ -779,7 +1032,7 @@ const Messenger = ({ navigation }: any) => {
             <ScrollView style={styles.usersList}>
               {users.map(user => (
                 <TouchableOpacity
-                  key={user.uid || user.id}
+                  key={`modal_user_${user.uid || user.id}`}
                   style={styles.userCard}
                   onPress={() => handleCreateConversation(user)}
                 >
@@ -829,9 +1082,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRightWidth: isMobile ? 0 : 1,
     borderRightColor: '#E5E5EA',
-  }
-  
-  ,
+  },
   conversationsHeader: {
     paddingHorizontal: 16,
     paddingVertical: 40,
@@ -1048,8 +1299,6 @@ const styles = StyleSheet.create({
   },
   messageBubble: {
     maxWidth: '70%',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
     borderRadius: 18,
   },
   bubbleOwn: {
@@ -1060,6 +1309,8 @@ const styles = StyleSheet.create({
   },
   messageText: {
     fontSize: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   messageTextOwn: {
     color: '#FFFFFF',
@@ -1067,11 +1318,72 @@ const styles = StyleSheet.create({
   messageTextOther: {
     color: '#000000',
   },
+  // Styles pour les fichiers
+  fileContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    margin: 4,
+    borderRadius: 12,
+    maxWidth: 250,
+  },
+  fileContainerOwn: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  fileContainerOther: {
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  fileIconContainer: {
+    marginRight: 12,
+  },
+  fileIcon: {
+    fontSize: 24,
+  },
+  fileInfo: {
+    flex: 1,
+  },
+  fileName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#000000',
+    marginBottom: 4,
+  },
+  fileSize: {
+    fontSize: 12,
+    color: '#666666',
+  },
+  downloadIcon: {
+    fontSize: 16,
+    marginLeft: 8,
+  },
+  // Menu d'attachments
+  attachmentMenu: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    padding: 16,
+    backgroundColor: '#F8F9FA',
+    borderTopWidth: 1,
+    borderTopColor: '#E5E5EA',
+  },
+  attachmentOption: {
+    alignItems: 'center',
+    padding: 12,
+  },
+  attachmentIcon: {
+    fontSize: 24,
+    marginBottom: 8,
+  },
+  attachmentText: {
+    fontSize: 12,
+    color: '#65676B',
+  },
   reactionsContainer: {
     flexDirection: 'row',
     marginTop: 4,
     gap: 4,
     flexWrap: 'wrap',
+    paddingHorizontal: 12,
+    paddingBottom: 8,
   },
   reactionBadge: {
     backgroundColor: '#F0F2F5',

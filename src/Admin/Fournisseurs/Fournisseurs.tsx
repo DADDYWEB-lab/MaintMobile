@@ -14,13 +14,17 @@ import {
   RefreshControl,
   Platform,
   Dimensions,
-  Image
+  Image,
+  Animated
 } from 'react-native';
 import {
-  collection, query, onSnapshot, addDoc, updateDoc,deleteDoc,doc,serverTimestamp,where,orderBy } from 'firebase/firestore';
+  collection, query, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp
+} from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../../firebaseConfig';
 import * as ImagePicker from 'expo-image-picker';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 
 const { width } = Dimensions.get('window');
 
@@ -43,7 +47,26 @@ const GestionFournisseurs = ({ navigation }: any) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
 
-  // Formulaire Fournisseur
+  // Animations
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: true,
+      })
+    ]).start();
+  }, []);
+
+  // Formulaires
   const [fournisseurForm, setFournisseurForm] = useState({
     nomEntreprise: '',
     logo: '',
@@ -56,7 +79,6 @@ const GestionFournisseurs = ({ navigation }: any) => {
     statut: 'actif'
   });
 
-  // Formulaire Produit
   const [produitForm, setProduitForm] = useState({
     reference: '',
     nom: '',
@@ -69,14 +91,13 @@ const GestionFournisseurs = ({ navigation }: any) => {
     stock: 0
   });
 
-  // Formulaire Catégorie
   const [categorieForm, setCategorieForm] = useState({
     nom: '',
     couleur: '#3B82F6',
-    icone: 'inventory'
+    icone: '📦'
   });
 
-  // Types d'unités disponibles
+  // Données statiques
   const typesUnite = [
     { value: 'unite', label: 'Unité' },
     { value: 'kg', label: 'Kilogramme' },
@@ -86,7 +107,6 @@ const GestionFournisseurs = ({ navigation }: any) => {
     { value: 'paquet', label: 'Paquet' }
   ];
 
-  // Catégories par défaut
   const categoriesDefaut = [
     {
       id: 'alimentaire',
@@ -118,7 +138,6 @@ const GestionFournisseurs = ({ navigation }: any) => {
     }
   ];
 
-  // Icônes disponibles
   const iconesDisponibles = [
     { value: '🍽️', label: 'Restaurant' },
     { value: '🧹', label: 'Nettoyage' },
@@ -154,6 +173,48 @@ const GestionFournisseurs = ({ navigation }: any) => {
     };
   }, []);
 
+  // Fonction de rafraîchissement
+  const onRefresh = React.useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 1000);
+  }, []);
+
+  // Fonctions utilitaires
+  const getProduitsByFournisseur = (fournisseurId) => {
+    return produits.filter(p => p.fournisseurId === fournisseurId);
+  };
+
+  const getCategorieById = (catId) => {
+    return categories.find(c => c.id === catId);
+  };
+
+  const toggleExpand = (fournisseurId) => {
+    setExpandedFournisseurs(prev => ({ 
+      ...prev, 
+      [fournisseurId]: !prev[fournisseurId] 
+    }));
+  };
+
+  const resetFournisseurForm = () => {
+    setFournisseurForm({ 
+      nomEntreprise: '', logo: '', telephone: '', email: '', 
+      siteWeb: '', adresse: '', categorieId: '', description: '', statut: 'actif' 
+    });
+    setSelectedFournisseur(null);
+  };
+
+  const resetProduitForm = () => {
+    setProduitForm({ 
+      reference: '', nom: '', unite: 'unite', prix: '', logo: '', 
+      fournisseurId: '', categorieId: '', description: '', stock: 0 
+    });
+    setSelectedProduit(null);
+  };
+
+  const resetCategorieForm = () => {
+    setCategorieForm({ nom: '', couleur: '#3B82F6', icone: '📦' });
+  };
+
   // Fonction pour uploader une image
   const uploadImage = async (uri, folder) => {
     try {
@@ -174,16 +235,13 @@ const GestionFournisseurs = ({ navigation }: any) => {
     }
   };
 
-  // Sélectionner une image depuis la galerie
   const pickImage = async (isFournisseur = true) => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       
       if (status !== 'granted') {
-        
         Alert.alert('Permission requise', 'L\'accès à la galerie est nécessaire pour sélectionner une image.');
         return;
-
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -210,20 +268,19 @@ const GestionFournisseurs = ({ navigation }: any) => {
     }
   };
 
-  // Supprimer le logo fournisseur
+  // Supprimer les logos
   const handleRemoveLogoFournisseur = () => {
     setFournisseurForm(prev => ({ ...prev, logo: '' }));
   };
 
-  // Supprimer le logo produit
   const handleRemoveLogoProduit = () => {
     setProduitForm(prev => ({ ...prev, logo: '' }));
   };
 
-  // Ajouter/Modifier Fournisseur
+  // Gestion des fournisseurs - CORRIGÉ
   const handleSubmitFournisseur = async () => {
     if (!fournisseurForm.nomEntreprise || !fournisseurForm.categorieId) {
-      Alert.alert('Erreur', 'Veuillez remplir les champs obligatoires');
+      Alert.alert('Erreur', 'Veuillez remplir les champs obligatoires (Nom et Catégorie)');
       return;
     }
 
@@ -235,30 +292,32 @@ const GestionFournisseurs = ({ navigation }: any) => {
       };
 
       if (selectedFournisseur) {
+        // Modification
         await updateDoc(doc(db, 'fournisseurs', selectedFournisseur.id), fournisseurData);
-        Alert.alert('Succès', 'Fournisseur modifié !');
+        Alert.alert('Succès', 'Fournisseur modifié avec succès !');
       } else {
+        // Création
         await addDoc(collection(db, 'fournisseurs'), {
           ...fournisseurData,
           createdAt: serverTimestamp()
         });
-        Alert.alert('Succès', 'Fournisseur créé !');
+        Alert.alert('Succès', 'Fournisseur créé avec succès !');
       }
 
       setShowFournisseurModal(false);
       resetFournisseurForm();
     } catch (error) {
       console.error('Erreur:', error);
-      Alert.alert('Erreur', error.message);
+      Alert.alert('Erreur', 'Une erreur est survenue: ' + error.message);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Ajouter/Modifier Produit
+  // Gestion des produits - CORRIGÉ
   const handleSubmitProduit = async () => {
     if (!produitForm.reference || !produitForm.fournisseurId) {
-      Alert.alert('Erreur', 'Veuillez remplir les champs obligatoires');
+      Alert.alert('Erreur', 'Veuillez remplir les champs obligatoires (Référence et Fournisseur)');
       return;
     }
 
@@ -266,34 +325,38 @@ const GestionFournisseurs = ({ navigation }: any) => {
     try {
       const produitData = {
         ...produitForm,
+        prix: produitForm.prix ? parseFloat(produitForm.prix) : 0,
+        stock: parseInt(produitForm.stock) || 0,
         updatedAt: serverTimestamp()
       };
 
       if (selectedProduit) {
+        // Modification
         await updateDoc(doc(db, 'produits', selectedProduit.id), produitData);
-        Alert.alert('Succès', 'Produit modifié !');
+        Alert.alert('Succès', 'Produit modifié avec succès !');
       } else {
+        // Création
         await addDoc(collection(db, 'produits'), {
           ...produitData,
           createdAt: serverTimestamp()
         });
-        Alert.alert('Succès', 'Produit créé !');
+        Alert.alert('Succès', 'Produit créé avec succès !');
       }
 
       setShowProduitModal(false);
       resetProduitForm();
     } catch (error) {
       console.error('Erreur:', error);
-      Alert.alert('Erreur', error.message);
+      Alert.alert('Erreur', 'Une erreur est survenue: ' + error.message);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Ajouter catégorie personnalisée
+  // Gestion des catégories - CORRIGÉ
   const handleSubmitCategorie = async () => {
     if (!categorieForm.nom) {
-      Alert.alert('Erreur', 'Veuillez entrer un nom');
+      Alert.alert('Erreur', 'Veuillez entrer un nom pour la catégorie');
       return;
     }
 
@@ -304,18 +367,18 @@ const GestionFournisseurs = ({ navigation }: any) => {
         custom: true,
         createdAt: serverTimestamp()
       });
-      Alert.alert('Succès', 'Catégorie ajoutée !');
+      Alert.alert('Succès', 'Catégorie créée avec succès !');
       setShowCategorieModal(false);
       resetCategorieForm();
     } catch (error) {
       console.error('Erreur:', error);
-      Alert.alert('Erreur', error.message);
+      Alert.alert('Erreur', 'Une erreur est survenue: ' + error.message);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Fonction pour supprimer un fournisseur et ses produits
+  // Suppression
   const handleDeleteFournisseur = async (fournisseur) => {
     Alert.alert(
       'Confirmer la suppression',
@@ -355,7 +418,6 @@ const GestionFournisseurs = ({ navigation }: any) => {
     );
   };
 
-  // Supprimer un produit
   const handleDeleteProduit = async (produit) => {
     Alert.alert(
       'Confirmer la suppression',
@@ -368,7 +430,7 @@ const GestionFournisseurs = ({ navigation }: any) => {
           onPress: async () => {
             try {
               await deleteDoc(doc(db, 'produits', produit.id));
-              Alert.alert('Succès', 'Produit supprimé !');
+              Alert.alert('Succès', 'Produit supprimé avec succès !');
             } catch (error) {
               Alert.alert('Erreur', error.message);
             }
@@ -378,39 +440,11 @@ const GestionFournisseurs = ({ navigation }: any) => {
     );
   };
 
-  const resetFournisseurForm = () => {
-    setFournisseurForm({ 
-      nomEntreprise: '', logo: '', telephone: '', email: '', 
-      siteWeb: '', adresse: '', categorieId: '', description: '', statut: 'actif' 
-    });
-    setSelectedFournisseur(null);
+  // Fonction utilitaire pour assombrir les couleurs
+  const darkenColor = (color, percent) => {
+    return color;
   };
 
-  const resetProduitForm = () => {
-    setProduitForm({ 
-      reference: '', nom: '', unite: 'unite', prix: '', logo: '', 
-      fournisseurId: '', categorieId: '', description: '', stock: 0 
-    });
-    setSelectedProduit(null);
-  };
-
-  const resetCategorieForm = () => {
-    setCategorieForm({ nom: '', couleur: '#3B82F6', icone: '📦' });
-  };
-
-  const toggleExpand = (fournisseurId) => {
-    setExpandedFournisseurs(prev => ({ ...prev, [fournisseurId]: !prev[fournisseurId] }));
-  };
-
-  const getProduitsByFournisseur = (fournisseurId) => {
-    return produits.filter(p => p.fournisseurId === fournisseurId);
-  };
-
-  const getCategorieById = (catId) => {
-    return categories.find(c => c.id === catId);
-  };
-
-  // Fonction pour afficher le logo ou une icône par défaut
   const renderLogo = (logoUrl, defaultIcon, size = 24) => {
     if (logoUrl) {
       return (
@@ -419,17 +453,20 @@ const GestionFournisseurs = ({ navigation }: any) => {
           style={{ 
             width: size, 
             height: size, 
-            borderRadius: 4,
+            borderRadius: 8,
             resizeMode: 'cover'
           }} 
         />
       );
     }
     return (
-      <Text style={{ fontSize: size }}>{defaultIcon}</Text>
+      <View style={[styles.defaultLogo, { width: size, height: size }]}>
+        <Text style={{ fontSize: size * 0.6 }}>{defaultIcon}</Text>
+      </View>
     );
   };
 
+  // Filtrage des fournisseurs
   const filteredFournisseurs = fournisseurs.filter(fournisseur => {
     const matchSearch = fournisseur.nomEntreprise?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       fournisseur.email?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -441,41 +478,60 @@ const GestionFournisseurs = ({ navigation }: any) => {
   const totalProduits = produits.length;
   const fournisseursActifs = fournisseurs.filter(f => f.statut === 'actif').length;
 
-  const onRefresh = React.useCallback(() => {
-    setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 1000);
-  }, []);
-
-  // Composant Carte Statistique
+  // Composants UI
   const StatCard = ({ icon, label, value, colors }) => (
-    <View style={[styles.statCard, { backgroundColor: colors[0] }]}>
-      <View style={styles.statHeader}>
-        <Text style={styles.statIcon}>{icon}</Text>
-        <Text style={styles.statLabel}>{label}</Text>
-      </View>
-      <Text style={styles.statValue}>{value}</Text>
-    </View>
+    <Animated.View 
+      style={[
+        styles.statCard,
+        { 
+          opacity: fadeAnim,
+          transform: [{ translateY: slideAnim }]
+        }
+      ]}
+    >
+      <LinearGradient
+        colors={colors}
+        style={styles.statGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <View style={styles.statContent}>
+          <Text style={styles.statIcon}>{icon}</Text>
+          <Text style={styles.statLabel}>{label}</Text>
+          <Text style={styles.statValue}>{value}</Text>
+        </View>
+      </LinearGradient>
+    </Animated.View>
   );
 
-  // Composant Carte Fournisseur
   const FournisseurCard = ({ fournisseur }) => {
     const categorie = getCategorieById(fournisseur.categorieId);
     const produitsFournisseur = getProduitsByFournisseur(fournisseur.id);
     const isExpanded = expandedFournisseurs[fournisseur.id];
 
     return (
-      <View style={[styles.fournisseurCard, { borderColor: categorie?.couleur || '#E5E7EB' }]}>
-        {/* Header Fournisseur */}
-        <View style={[styles.fournisseurHeader, { backgroundColor: categorie?.couleur || '#6B7280' }]}>
+      <Animated.View 
+        style={[
+          styles.fournisseurCard,
+          { 
+            opacity: fadeAnim,
+            transform: [{ translateY: slideAnim }]
+          }
+        ]}
+      >
+        <LinearGradient
+          colors={[categorie?.couleur || '#6B7280', darkenColor(categorie?.couleur || '#6B7280', 20)]}
+          style={styles.fournisseurHeader}
+        >
           <View style={styles.fournisseurHeaderContent}>
             <View style={styles.fournisseurInfo}>
-              {renderLogo(fournisseur.logo, '🏢', 32)}
+              <View style={styles.logoContainer}>
+                {renderLogo(fournisseur.logo, '🏢', 40)}
+              </View>
               <View style={styles.fournisseurTextContainer}>
-                <Text style={styles.fournisseurNom}>
-                  {fournisseur.nomEntreprise}
-                </Text>
+                <Text style={styles.fournisseurNom}>{fournisseur.nomEntreprise}</Text>
                 <View style={styles.fournisseurTags}>
-                  <View style={styles.tag}>
+                  <View style={[styles.tag, { backgroundColor: 'rgba(255,255,255,0.3)' }]}>
                     <Text style={styles.tagText}>{categorie?.nom}</Text>
                   </View>
                   <View style={[styles.tag, { 
@@ -485,23 +541,20 @@ const GestionFournisseurs = ({ navigation }: any) => {
                       {fournisseur.statut === 'actif' ? 'Actif' : 'Inactif'}
                     </Text>
                   </View>
-                  <View style={styles.tag}>
-                    <Text style={styles.tagText}>{produitsFournisseur.length} produit(s)</Text>
-                  </View>
                 </View>
               </View>
             </View>
 
-            {/* Boutons d'action */}
             <View style={styles.fournisseurActions}>
               <TouchableOpacity
                 style={styles.actionButton}
                 onPress={() => {
-                  setProduitForm({ ...produitForm, fournisseurId: fournisseur.id });
+                  resetProduitForm();
+                  setProduitForm(prev => ({ ...prev, fournisseurId: fournisseur.id }));
                   setShowProduitModal(true);
                 }}
               >
-                <Text style={styles.actionButtonText}>➕ Produit</Text>
+                <Ionicons name="add-circle" size={20} color="white" />
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -522,44 +575,36 @@ const GestionFournisseurs = ({ navigation }: any) => {
                   setShowFournisseurModal(true);
                 }}
               >
-                <Text style={styles.actionButtonText}>✏️ Modifier</Text>
+                <Ionicons name="create" size={18} color="white" />
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={[styles.actionButton, { backgroundColor: 'rgba(239,68,68,0.8)' }]}
                 onPress={() => handleDeleteFournisseur(fournisseur)}
-                disabled={isSubmitting}
               >
-                <Text style={styles.actionButtonText}>🗑️</Text>
+                <Ionicons name="trash" size={16} color="white" />
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.actionButton}
                 onPress={() => toggleExpand(fournisseur.id)}
               >
-                <Text style={styles.actionButtonText}>{isExpanded ? '▲' : '▼'}</Text>
+                <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={18} color="white" />
               </TouchableOpacity>
             </View>
           </View>
 
-          {/* Informations de contact */}
           <View style={styles.contactInfo}>
             {fournisseur.telephone && (
               <View style={styles.contactItem}>
-                <Text style={styles.contactIcon}>📞</Text>
+                <Ionicons name="call" size={14} color="white" />
                 <Text style={styles.contactText}>{fournisseur.telephone}</Text>
               </View>
             )}
             {fournisseur.email && (
               <View style={styles.contactItem}>
-                <Text style={styles.contactIcon}>✉️</Text>
+                <Ionicons name="mail" size={14} color="white" />
                 <Text style={styles.contactText}>{fournisseur.email}</Text>
-              </View>
-            )}
-            {fournisseur.siteWeb && (
-              <View style={styles.contactItem}>
-                <Text style={styles.contactIcon}>🌐</Text>
-                <Text style={styles.contactText}>{fournisseur.siteWeb}</Text>
               </View>
             )}
           </View>
@@ -567,15 +612,20 @@ const GestionFournisseurs = ({ navigation }: any) => {
           {fournisseur.description && (
             <Text style={styles.fournisseurDescription}>{fournisseur.description}</Text>
           )}
-        </View>
 
-        {/* Liste des produits */}
+          <View style={styles.fournisseurFooter}>
+            <Text style={styles.produitCount}>{produitsFournisseur.length} produit(s)</Text>
+          </View>
+        </LinearGradient>
+
         {isExpanded && produitsFournisseur.length > 0 && (
           <View style={styles.produitsContainer}>
             {produitsFournisseur.map(produit => (
               <View key={produit.id} style={styles.produitCard}>
                 <View style={styles.produitInfo}>
-                  {renderLogo(produit.logo, '📦', 32)}
+                  <View style={styles.produitLogo}>
+                    {renderLogo(produit.logo, '📦', 32)}
+                  </View>
                   <View style={styles.produitDetails}>
                     <Text style={styles.produitNom}>
                       {produit.reference} - {produit.nom}
@@ -598,7 +648,7 @@ const GestionFournisseurs = ({ navigation }: any) => {
                         reference: produit.reference || '',
                         nom: produit.nom || '',
                         unite: produit.unite || 'unite',
-                        prix: produit.prix || '',
+                        prix: produit.prix?.toString() || '',
                         logo: produit.logo || '',
                         fournisseurId: produit.fournisseurId || '',
                         categorieId: produit.categorieId || '',
@@ -608,69 +658,69 @@ const GestionFournisseurs = ({ navigation }: any) => {
                       setShowProduitModal(true);
                     }}
                   >
-                    <Text style={styles.produitActionText}>✏️</Text>
+                    <Ionicons name="create" size={14} color="white" />
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     style={[styles.produitActionBtn, { backgroundColor: '#EF4444' }]}
                     onPress={() => handleDeleteProduit(produit)}
                   >
-                    <Text style={styles.produitActionText}>🗑️</Text>
+                    <Ionicons name="trash" size={14} color="white" />
                   </TouchableOpacity>
                 </View>
               </View>
             ))}
           </View>
         )}
-      </View>
+      </Animated.View>
     );
   };
 
   return (
     <View style={styles.container}>
-      {/* En-tête avec statistiques */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Gestion des Fournisseurs</Text>
-        <Text style={styles.subtitle}>Gérez vos fournisseurs et leurs produits par catégorie</Text>
-        
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statsContainer}>
-          <StatCard 
-            icon="🏢" 
-            label="Total Fournisseurs" 
-            value={fournisseurs.length}
-            colors={['#3B82F6', '#1D4ED8']}
-          />
-          <StatCard 
-            icon="📦" 
-            label="Total Produits" 
-            value={totalProduits}
-            colors={['#10B981', '#047857']}
-          />
-          <StatCard 
-            icon="✅" 
-            label="Fournisseurs Actifs" 
-            value={fournisseursActifs}
-            colors={['#F59E0B', '#D97706']}
-          />
-          <StatCard 
-            icon="🏷️" 
-            label="Catégories" 
-            value={categories.length}
-            colors={['#8B5CF6', '#7C3AED']}
-          />
-        </ScrollView>
-      </View>
+      {/* Header avec dégradé */}
+      <LinearGradient
+        colors={['#1E40AF', '#3B82F6']}
+        style={styles.header}
+      >
+        <View style={styles.headerContent}>
+          <Text style={styles.title}>Gestion des Fournisseurs</Text>
+          <Text style={styles.subtitle}>Gérez vos fournisseurs et leurs produits</Text>
+          
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statsContainer}>
+            <StatCard 
+              icon="🏢" 
+              label="Fournisseurs" 
+              value={fournisseurs.length}
+              colors={['#6366F1', '#8B5CF6']}
+            />
+            <StatCard 
+              icon="📦" 
+              label="Produits" 
+              value={totalProduits}
+              colors={['#10B981', '#059669']}
+            />
+            <StatCard 
+              icon="✅" 
+              label="Actifs" 
+              value={fournisseursActifs}
+              colors={['#F59E0B', '#D97706']}
+            />
+          </ScrollView>
+        </View>
+      </LinearGradient>
 
       {/* Barre de recherche et filtres */}
-      <View style={styles.filtersContainer}>
-        <View style={styles.searchContainer}>
+      <View style={styles.filtersSection}>
+        <View style={styles.searchBox}>
+          <Ionicons name="search" size={20} color="#6B7280" style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
             placeholder="Rechercher un fournisseur..."
             value={searchTerm}
             onChangeText={setSearchTerm}
+            placeholderTextColor="#9CA3AF"
           />
-          <Text style={styles.searchIcon}>🔍</Text>
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesFilter}>
@@ -713,14 +763,26 @@ const GestionFournisseurs = ({ navigation }: any) => {
             setShowFournisseurModal(true);
           }}
         >
-          <Text style={styles.primaryButtonText}>➕ Nouveau Fournisseur</Text>
+          <LinearGradient
+            colors={['#4F46E5', '#6366F1']}
+            style={styles.buttonGradient}
+          >
+            <Ionicons name="business" size={20} color="white" />
+            <Text style={styles.primaryButtonText}>Nouveau Fournisseur</Text>
+          </LinearGradient>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.secondaryButton}
           onPress={() => setShowCategorieModal(true)}
         >
-          <Text style={styles.secondaryButtonText}>🏷️ Nouvelle Catégorie</Text>
+          <LinearGradient
+            colors={['#10B981', '#059669']}
+            style={styles.buttonGradient}
+          >
+            <Ionicons name="pricetag" size={18} color="white" />
+            <Text style={styles.secondaryButtonText}>Nouvelle Catégorie</Text>
+          </LinearGradient>
         </TouchableOpacity>
       </View>
 
@@ -728,13 +790,18 @@ const GestionFournisseurs = ({ navigation }: any) => {
       <ScrollView
         style={styles.fournisseursList}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh}
+            colors={['#3B82F6']}
+            tintColor="#3B82F6"
+          />
         }
         showsVerticalScrollIndicator={false}
       >
         {filteredFournisseurs.length === 0 ? (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyStateIcon}>🏢</Text>
+            <Ionicons name="business-outline" size={64} color="#9CA3AF" />
             <Text style={styles.emptyStateTitle}>Aucun fournisseur trouvé</Text>
             <Text style={styles.emptyStateText}>
               {searchTerm || filterCategorie !== 'all' 
@@ -744,9 +811,12 @@ const GestionFournisseurs = ({ navigation }: any) => {
             </Text>
             <TouchableOpacity
               style={styles.emptyStateButton}
-              onPress={() => setShowFournisseurModal(true)}
+              onPress={() => {
+                resetFournisseurForm();
+                setShowFournisseurModal(true);
+              }}
             >
-              <Text style={styles.emptyStateButtonText}>➕ Créer un fournisseur</Text>
+              <Text style={styles.emptyStateButtonText}>Créer un fournisseur</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -812,10 +882,6 @@ const GestionFournisseurs = ({ navigation }: any) => {
                     {renderLogo(fournisseurForm.logo, '🏢', 80)}
                   </View>
                 )}
-                
-                <Text style={styles.uploadInfo}>
-                  Formats supportés: JPG, PNG • Taille max: 5MB
-                </Text>
               </View>
 
               <View style={styles.formRow}>
@@ -843,45 +909,9 @@ const GestionFournisseurs = ({ navigation }: any) => {
                 </View>
               </View>
 
-              <View style={styles.formRow}>
-                <View style={[styles.formGroup, styles.formGroupHalf]}>
-                  <Text style={styles.label}>Site web</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={fournisseurForm.siteWeb}
-                    onChangeText={(text) => setFournisseurForm(prev => ({ ...prev, siteWeb: text }))}
-                    placeholder="Ex: www.entreprise.com"
-                    autoCapitalize="none"
-                  />
-                </View>
-
-                <View style={[styles.formGroup, styles.formGroupHalf]}>
-                  <Text style={styles.label}>Statut</Text>
-                  <View style={styles.statusContainer}>
-                    {['actif', 'inactif'].map(statut => (
-                      <TouchableOpacity
-                        key={statut}
-                        style={[
-                          styles.statusChip,
-                          fournisseurForm.statut === statut && styles.statusChipActive
-                        ]}
-                        onPress={() => setFournisseurForm(prev => ({ ...prev, statut }))}
-                      >
-                        <Text style={[
-                          styles.statusChipText,
-                          fournisseurForm.statut === statut && styles.statusChipTextActive
-                        ]}>
-                          {statut === 'actif' ? '🟢 Actif' : '🔴 Inactif'}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-              </View>
-
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Catégorie *</Text>
-                <ScrollView style={styles.categoriesGrid}>
+                <ScrollView style={styles.categoriesGrid} nestedScrollEnabled={true}>
                   {categories.map(categorie => (
                     <TouchableOpacity
                       key={categorie.id}
@@ -901,18 +931,6 @@ const GestionFournisseurs = ({ navigation }: any) => {
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Adresse</Text>
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  value={fournisseurForm.adresse}
-                  onChangeText={(text) => setFournisseurForm(prev => ({ ...prev, adresse: text }))}
-                  placeholder="Adresse complète..."
-                  multiline
-                  numberOfLines={2}
-                />
               </View>
 
               <View style={styles.formGroup}>
@@ -943,7 +961,7 @@ const GestionFournisseurs = ({ navigation }: any) => {
               <TouchableOpacity
                 style={[styles.modalButton, styles.submitButton]}
                 onPress={handleSubmitFournisseur}
-                disabled={isSubmitting || uploadingLogo}
+                disabled={isSubmitting}
               >
                 <Text style={styles.submitButtonText}>
                   {isSubmitting ? '...' : (selectedFournisseur ? 'Modifier' : 'Créer')}
@@ -1016,37 +1034,6 @@ const GestionFournisseurs = ({ navigation }: any) => {
                 />
               </View>
 
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Logo du produit</Text>
-                <View style={styles.imageUploadContainer}>
-                  <TouchableOpacity
-                    style={[styles.uploadButton, uploadingLogo && styles.uploadButtonDisabled]}
-                    onPress={() => pickImage(false)}
-                    disabled={uploadingLogo}
-                  >
-                    <Text style={styles.uploadButtonText}>
-                      {uploadingLogo ? '📤 Upload...' : '📷 Choisir une image'}
-                    </Text>
-                  </TouchableOpacity>
-                  
-                  {produitForm.logo && (
-                    <TouchableOpacity
-                      style={styles.removeButton}
-                      onPress={handleRemoveLogoProduit}
-                    >
-                      <Text style={styles.removeButtonText}>🗑️ Supprimer</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-                
-                {produitForm.logo && (
-                  <View style={styles.imagePreview}>
-                    <Text style={styles.imagePreviewText}>Aperçu :</Text>
-                    {renderLogo(produitForm.logo, '📦', 80)}
-                  </View>
-                )}
-              </View>
-
               <View style={styles.formRow}>
                 <View style={[styles.formGroup, styles.formGroupHalf]}>
                   <Text style={styles.label}>Prix (€)</Text>
@@ -1073,7 +1060,7 @@ const GestionFournisseurs = ({ navigation }: any) => {
 
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Fournisseur *</Text>
-                <ScrollView style={styles.fournisseursGrid}>
+                <ScrollView style={styles.fournisseursGrid} nestedScrollEnabled={true}>
                   {fournisseurs.map(fournisseur => (
                     <TouchableOpacity
                       key={fournisseur.id}
@@ -1121,7 +1108,7 @@ const GestionFournisseurs = ({ navigation }: any) => {
               <TouchableOpacity
                 style={[styles.modalButton, styles.submitButton]}
                 onPress={handleSubmitProduit}
-                disabled={isSubmitting || uploadingLogo}
+                disabled={isSubmitting}
               >
                 <Text style={styles.submitButtonText}>
                   {isSubmitting ? '...' : (selectedProduit ? 'Modifier' : 'Créer')}
@@ -1226,90 +1213,109 @@ const GestionFournisseurs = ({ navigation }: any) => {
   );
 };
 
+// Styles complets
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F8FAFC',
   },
   header: {
-    backgroundColor: '#1E40AF',
-    padding: 20,
+    padding: 24,
     paddingTop: Platform.OS === 'ios' ? 60 : 40,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  headerContent: {
+    marginTop: 10,
   },
   title: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: 'bold',
     color: 'white',
-    marginBottom: 4,
+    marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
-    color: 'rgba(255,255,255,0.8)',
-    marginBottom: 20,
+    color: 'rgba(255,255,255,0.9)',
+    marginBottom: 24,
   },
   statsContainer: {
     flexDirection: 'row',
   },
   statCard: {
-    padding: 16,
-    borderRadius: 12,
-    marginRight: 12,
-    minWidth: 140,
+    marginRight: 16,
+    borderRadius: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
-  statHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
+  statGradient: {
+    padding: 20,
+    borderRadius: 16,
+    minWidth: 140,
+  },
+  statContent: {
+    alignItems: 'flex-start',
   },
   statIcon: {
-    fontSize: 20,
-    marginRight: 8,
+    fontSize: 24,
+    marginBottom: 8,
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 14,
     color: 'rgba(255,255,255,0.9)',
     fontWeight: '500',
+    marginBottom: 4,
   },
   statValue: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
     color: 'white',
   },
-  filtersContainer: {
+  filtersSection: {
     backgroundColor: 'white',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    padding: 20,
+    marginHorizontal: 20,
+    marginTop: -20,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  searchContainer: {
-    position: 'relative',
-    marginBottom: 12,
-  },
-  searchInput: {
-    backgroundColor: '#F3F4F6',
-    padding: 12,
-    paddingLeft: 40,
-    borderRadius: 8,
-    fontSize: 16,
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   searchIcon: {
-    position: 'absolute',
-    left: 12,
-    top: 12,
+    marginRight: 12,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: 14,
     fontSize: 16,
-    color: '#6B7280',
+    color: '#1F2937',
   },
   categoriesFilter: {
     flexDirection: 'row',
   },
   filterChip: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: '#D1D5DB',
@@ -1330,32 +1336,39 @@ const styles = StyleSheet.create({
   },
   actionsContainer: {
     flexDirection: 'row',
-    padding: 16,
+    padding: 20,
     gap: 12,
   },
   primaryButton: {
     flex: 1,
-    backgroundColor: '#4F46E5',
-    padding: 16,
     borderRadius: 12,
-    alignItems: 'center',
     shadowColor: '#4F46E5',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
-    elevation: 4,
+    elevation: 6,
+  },
+  secondaryButton: {
+    flex: 1,
+    borderRadius: 12,
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  buttonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 12,
+    gap: 8,
   },
   primaryButtonText: {
     color: 'white',
     fontWeight: 'bold',
     fontSize: 16,
-  },
-  secondaryButton: {
-    flex: 1,
-    backgroundColor: '#10B981',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
   },
   secondaryButtonText: {
     color: 'white',
@@ -1364,70 +1377,45 @@ const styles = StyleSheet.create({
   },
   fournisseursList: {
     flex: 1,
-    padding: 16,
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 40,
-  },
-  emptyStateIcon: {
-    fontSize: 64,
-    marginBottom: 16,
-  },
-  emptyStateTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#374151',
-    marginBottom: 8,
-  },
-  emptyStateText: {
-    fontSize: 16,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  emptyStateButton: {
-    backgroundColor: '#3B82F6',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  emptyStateButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 16,
+    padding: 20,
   },
   fournisseurCard: {
-    backgroundColor: 'white',
-    borderRadius: 12,
+    borderRadius: 16,
     marginBottom: 16,
-    borderWidth: 2,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
     overflow: 'hidden',
   },
   fournisseurHeader: {
-    padding: 16,
+    padding: 20,
   },
   fournisseurHeaderContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+    marginBottom: 12,
   },
   fournisseurInfo: {
     flexDirection: 'row',
     flex: 1,
   },
+  logoContainer: {
+    marginRight: 12,
+  },
+  defaultLogo: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   fournisseurTextContainer: {
     flex: 1,
-    marginLeft: 12,
   },
   fournisseurNom: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
     color: 'white',
     marginBottom: 8,
@@ -1435,14 +1423,12 @@ const styles = StyleSheet.create({
   fournisseurTags: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    gap: 6,
   },
   tag: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
-    marginRight: 6,
-    marginBottom: 4,
   },
   tagText: {
     fontSize: 12,
@@ -1451,33 +1437,26 @@ const styles = StyleSheet.create({
   },
   fournisseurActions: {
     flexDirection: 'row',
-    marginLeft: 12,
+    gap: 6,
   },
   actionButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
     backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 6,
-    marginLeft: 6,
-  },
-  actionButtonText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: 'bold',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   contactInfo: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginTop: 12,
-    gap: 12,
+    gap: 16,
+    marginBottom: 12,
   },
   contactItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-  },
-  contactIcon: {
-    fontSize: 14,
+    gap: 6,
   },
   contactText: {
     color: 'white',
@@ -1486,16 +1465,27 @@ const styles = StyleSheet.create({
   fournisseurDescription: {
     color: 'rgba(255,255,255,0.9)',
     fontSize: 14,
-    marginTop: 8,
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  fournisseurFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  produitCount: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 14,
+    fontWeight: '500',
   },
   produitsContainer: {
     backgroundColor: '#F9FAFB',
-    padding: 12,
+    padding: 16,
   },
   produitCard: {
     backgroundColor: 'white',
-    padding: 12,
-    borderRadius: 8,
+    padding: 16,
+    borderRadius: 12,
     marginBottom: 8,
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1503,16 +1493,18 @@ const styles = StyleSheet.create({
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
+    shadowRadius: 3,
+    elevation: 2,
   },
   produitInfo: {
     flexDirection: 'row',
     flex: 1,
   },
+  produitLogo: {
+    marginRight: 12,
+  },
   produitDetails: {
     flex: 1,
-    marginLeft: 12,
   },
   produitNom: {
     fontSize: 16,
@@ -1528,24 +1520,53 @@ const styles = StyleSheet.create({
   produitDescription: {
     fontSize: 13,
     color: '#6B7280',
+    lineHeight: 18,
   },
   produitActions: {
     flexDirection: 'row',
-    marginLeft: 12,
+    gap: 6,
   },
   produitActionBtn: {
     width: 32,
     height: 32,
-    borderRadius: 6,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 6,
   },
-  produitActionText: {
-    color: 'white',
-    fontSize: 14,
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 40,
+    backgroundColor: 'white',
+    borderRadius: 16,
+    marginTop: 20,
+  },
+  emptyStateTitle: {
+    fontSize: 20,
     fontWeight: 'bold',
+    color: '#374151',
+    marginBottom: 8,
+    marginTop: 16,
   },
+  emptyStateText: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 24,
+  },
+  emptyStateButton: {
+    backgroundColor: '#3B82F6',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  emptyStateButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  // Styles pour les modals
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -1635,35 +1656,6 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     marginBottom: 8,
   },
-  uploadInfo: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 8,
-  },
-  statusContainer: {
-    flexDirection: 'row',
-  },
-  statusChip: {
-    backgroundColor: '#F3F4F6',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-  },
-  statusChipActive: {
-    backgroundColor: '#3B82F6',
-    borderColor: '#3B82F6',
-  },
-  statusChipText: {
-    fontSize: 14,
-    color: '#374151',
-    fontWeight: '500',
-  },
-  statusChipTextActive: {
-    color: 'white',
-  },
   categoriesGrid: {
     maxHeight: 200,
   },
@@ -1747,6 +1739,9 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
   },
+
+
+
   colorOption: {
     width: 40,
     height: 40,
@@ -1754,6 +1749,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+
+
+
   colorOptionActive: {
     borderWidth: 3,
     borderColor: 'white',
@@ -1763,6 +1761,9 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 4,
   },
+
+
+
   colorCheckmark: {
     color: 'white',
     fontSize: 16,
@@ -1789,12 +1790,14 @@ const styles = StyleSheet.create({
   iconText: {
     fontSize: 20,
   },
+
   modalActions: {
     flexDirection: 'row',
     padding: 20,
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
   },
+
   modalButton: {
     flex: 1,
     padding: 16,
@@ -1802,23 +1805,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+
   cancelButton: {
     backgroundColor: '#F3F4F6',
     marginRight: 12,
   },
+
   cancelButtonText: {
     color: '#374151',
     fontSize: 16,
     fontWeight: '600',
   },
+
   submitButton: {
     backgroundColor: '#3B82F6',
   },
+
   submitButtonText: {
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
   },
+  
 });
 
 export default GestionFournisseurs;
