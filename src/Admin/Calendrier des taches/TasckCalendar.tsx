@@ -1,27 +1,38 @@
+// TaskCalendar.tsx
 // @ts-nocheck
 
 import React, { useState, useEffect } from 'react';
-import {View,Text,ScrollView,StyleSheet,TouchableOpacity,Dimensions,ActivityIndicator,Modal,Pressable,FlatList} from 'react-native';
-import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
+import {
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  Dimensions,
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  FlatList,
+  RefreshControl
+} from 'react-native';
+import { collection, query, onSnapshot, orderBy, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../../../firebaseConfig';
-
-
 
 const { width } = Dimensions.get('window');
 
-const TaskCalendar = ({ navigation } : { navigation: any }) => {
+const TaskCalendar = ({ navigation }: { navigation: any }) => {
   const [tasks, setTasks] = useState([]);
   const [staff, setStaff] = useState([]);
   const [espaces, setEspaces] = useState([]);
   const [sousEspaces, setSousEspaces] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   
+  const [currentView, setCurrentView] = useState('today'); // 'today' ou 'calendar'
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedTask, setSelectedTask] = useState(null);
   const [showTaskModal, setShowTaskModal] = useState(false);
-
-
 
   // Récupération des données
   useEffect(() => {
@@ -177,12 +188,29 @@ const TaskCalendar = ({ navigation } : { navigation: any }) => {
     setShowTaskModal(true);
   };
 
-  // AJOUT: Fonction pour naviguer vers l'écran d'ajout de tâche
+  // Fonction pour changer le statut d'une tâche
+  const handleStatusChange = async (taskId, newStatus) => {
+    try {
+      await updateDoc(doc(db, 'tasks', taskId), { status: newStatus });
+      if (selectedTask && selectedTask.id === taskId) {
+        setSelectedTask({ ...selectedTask, status: newStatus });
+      }
+    } catch (error) {
+      console.error('Erreur lors du changement de statut:', error);
+    }
+  };
+
+  // Fonction pour naviguer vers l'écran d'ajout de tâche
   const handleAddTask = () => {
-    
     navigation.navigate('NewTask', { 
       selectedDate: selectedDate.toISOString().split('T')[0] 
     });
+  };
+
+  // Refresh function
+  const onRefresh = () => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 1000);
   };
 
   const monthNames = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 
@@ -190,6 +218,7 @@ const TaskCalendar = ({ navigation } : { navigation: any }) => {
   const dayNames = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
 
   const days = getDaysInMonth(currentDate);
+  const todayTasks = getTasksForDate(new Date());
   const selectedDateTasks = getTasksForDate(selectedDate);
 
   if (loading) {
@@ -201,6 +230,53 @@ const TaskCalendar = ({ navigation } : { navigation: any }) => {
     );
   }
 
+  // Composant pour afficher une carte de tâche
+  const TaskCard = ({ task }) => {
+    const employee = getStaffById(task.staffId);
+    const location = getLocationNameById(task.espaceId, task.sousEspaceId);
+    
+    return (
+      <TouchableOpacity
+        style={styles.taskCard}
+        onPress={() => handleTaskPress(task)}
+        activeOpacity={0.7}
+      >
+        <View style={[styles.taskStatus, { backgroundColor: getStatusColor(task.status) }]} />
+        
+        <View style={styles.taskContent}>
+          <View style={styles.taskHeader}>
+            <Text style={styles.taskTitle}>{task.taskType}</Text>
+            <Text style={[styles.taskTime, { color: getStatusColor(task.status) }]}>
+              {task.startTime || '00:00'}
+            </Text>
+          </View>
+          
+          <View style={styles.taskDetails}>
+            <View style={styles.taskDetailRow}>
+              <Text style={styles.taskDetailIcon}>👤</Text>
+              <Text style={styles.taskDetailText}>
+                {employee?.name || 'Non assigné'}
+              </Text>
+            </View>
+            
+            <View style={styles.taskDetailRow}>
+              <Text style={styles.taskDetailIcon}>📍</Text>
+              <Text style={styles.taskDetailText} numberOfLines={1}>
+                {location}
+              </Text>
+            </View>
+          </View>
+          
+          <View style={[styles.taskBadge, { backgroundColor: getStatusColor(task.status) + '20' }]}>
+            <Text style={[styles.taskBadgeText, { color: getStatusColor(task.status) }]}>
+              {getStatusText(task.status)}
+            </Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -208,157 +284,183 @@ const TaskCalendar = ({ navigation } : { navigation: any }) => {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Text style={styles.backButtonText}>← Retour</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Calendrier des Tâches</Text>
+        <Text style={styles.headerTitle}>Tâches & Planning</Text>
       </View>
 
-      <ScrollView style={styles.scrollView}>
-        {/* Navigation du calendrier */}
-        <View style={styles.calendarHeader}>
-          <TouchableOpacity onPress={goToPreviousMonth} style={styles.navButton}>
-            <Text style={styles.navButtonText}>←</Text>
-          </TouchableOpacity>
-          
-          <View style={styles.monthYearContainer}>
-            <Text style={styles.monthYearText}>
-              {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
-            </Text>
-            <TouchableOpacity onPress={goToToday} style={styles.todayButton}>
-              <Text style={styles.todayButtonText}>Aujourd'hui</Text>
-            </TouchableOpacity>
-          </View>
-          
-          <TouchableOpacity onPress={goToNextMonth} style={styles.navButton}>
-            <Text style={styles.navButtonText}>→</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Grille du calendrier */}
-        <View style={styles.calendarContainer}>
-          {/* En-têtes des jours */}
-          <View style={styles.weekDaysRow}>
-            {dayNames.map((day, index) => (
-              <View key={index} style={styles.weekDayCell}>
-                <Text style={styles.weekDayText}>{day}</Text>
-              </View>
-            ))}
-          </View>
-
-          {/* Jours du mois */}
-          <View style={styles.daysGrid}>
-            {days.map((dayInfo) => {
-              if (dayInfo.isEmpty) {
-                return <View key={dayInfo.key} style={styles.dayCell} />;
-              }
-
-              const isSelected = selectedDate.toDateString() === dayInfo.date.toDateString();
-              const isToday = new Date().toDateString() === dayInfo.date.toDateString();
-              const hasTasks = hasTasksOnDate(dayInfo.date);
-              const tasksCount = getTasksForDate(dayInfo.date).length;
-
-              return (
-                <TouchableOpacity
-                  key={dayInfo.key}
-                  style={[
-                    styles.dayCell,
-                    isToday && styles.todayCell,
-                    isSelected && styles.selectedCell
-                  ]}
-                  onPress={() => handleDayPress(dayInfo)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[
-                    styles.dayText,
-                    isToday && styles.todayText,
-                    isSelected && styles.selectedText
-                  ]}>
-                    {dayInfo.day}
-                  </Text>
-                  {hasTasks && (
-                    <View style={styles.taskIndicator}>
-                      <Text style={styles.taskIndicatorText}>{tasksCount}</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-
-        {/* Liste des tâches du jour sélectionné */}
-        <View style={styles.tasksList}>
-          <Text style={styles.tasksListTitle}>
-            Tâches du {selectedDate.toLocaleDateString('fr-FR', { 
-              weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' 
-            })}
+      {/* Tabs Navigation */}
+      <View style={styles.tabsContainer}>
+        <TouchableOpacity
+          style={[styles.tab, currentView === 'today' && styles.tabActive]}
+          onPress={() => setCurrentView('today')}
+        >
+          <Text style={[styles.tabText, currentView === 'today' && styles.tabTextActive]}>
+            📋 Aujourd'hui
           </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, currentView === 'calendar' && styles.tabActive]}
+          onPress={() => setCurrentView('calendar')}
+        >
+          <Text style={[styles.tabText, currentView === 'calendar' && styles.tabTextActive]}>
+            📅 Calendrier
+          </Text>
+        </TouchableOpacity>
+      </View>
 
-          {selectedDateTasks.length === 0 ? (
+      {/* VUE AUJOURD'HUI */}
+      {currentView === 'today' && (
+        <FlatList
+          data={todayTasks}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => <TaskCard task={item} />}
+          contentContainerStyle={styles.todayListContent}
+          ListHeaderComponent={
+            <View style={styles.todayHeader}>
+              <Text style={styles.todayTitle}>
+                📋 Tâches d'aujourd'hui
+              </Text>
+              <Text style={styles.todayDate}>
+                {new Date().toLocaleDateString('fr-FR', { 
+                  weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' 
+                })}
+              </Text>
+              <Text style={styles.tasksCount}>
+                {todayTasks.length} tâche{todayTasks.length > 1 ? 's' : ''}
+              </Text>
+            </View>
+          }
+          ListEmptyComponent={
             <View style={styles.noTasksContainer}>
-              <Text style={styles.noTasksIcon}>📅</Text>
-              <Text style={styles.noTasksText}>Aucune tâche pour ce jour</Text>
+              <Text style={styles.noTasksIcon}>✅</Text>
+              <Text style={styles.noTasksText}>Aucune tâche pour aujourd'hui</Text>
               <TouchableOpacity 
                 style={styles.addFirstTaskButton}
-                onPress={handleAddTask}
+                onPress={() => navigation.navigate('NewTask', { 
+                  selectedDate: new Date().toISOString().split('T')[0] 
+                })}
               >
                 <Text style={styles.addFirstTaskText}>➕ Ajouter une tâche</Text>
               </TouchableOpacity>
             </View>
-          ) : (
-            <FlatList
-              data={selectedDateTasks}
-              scrollEnabled={false}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item: task }) => {
-                const employee = getStaffById(task.staffId);
-                const location = getLocationNameById(task.espaceId, task.sousEspaceId);
-                
+          }
+        />
+      )}
+
+      {/* VUE CALENDRIER */}
+      {currentView === 'calendar' && (
+        <ScrollView 
+          style={styles.scrollView}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+        >
+          {/* Navigation du calendrier */}
+          <View style={styles.calendarHeader}>
+            <TouchableOpacity onPress={goToPreviousMonth} style={styles.navButton}>
+              <Text style={styles.navButtonText}>←</Text>
+            </TouchableOpacity>
+            
+            <View style={styles.monthYearContainer}>
+              <Text style={styles.monthYearText}>
+                {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
+              </Text>
+              <TouchableOpacity onPress={goToToday} style={styles.todayButton}>
+                <Text style={styles.todayButtonText}>Aujourd'hui</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <TouchableOpacity onPress={goToNextMonth} style={styles.navButton}>
+              <Text style={styles.navButtonText}>→</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Grille du calendrier */}
+          <View style={styles.calendarContainer}>
+            {/* En-têtes des jours */}
+            <View style={styles.weekDaysRow}>
+              {dayNames.map((day, index) => (
+                <View key={index} style={styles.weekDayCell}>
+                  <Text style={styles.weekDayText}>{day}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Jours du mois */}
+            <View style={styles.daysGrid}>
+              {days.map((dayInfo) => {
+                if (dayInfo.isEmpty) {
+                  return <View key={dayInfo.key} style={styles.dayCell} />;
+                }
+
+                const isSelected = selectedDate.toDateString() === dayInfo.date.toDateString();
+                const isToday = new Date().toDateString() === dayInfo.date.toDateString();
+                const hasTasks = hasTasksOnDate(dayInfo.date);
+                const tasksCount = getTasksForDate(dayInfo.date).length;
+
                 return (
                   <TouchableOpacity
-                    style={styles.taskCard}
-                    onPress={() => handleTaskPress(task)}
+                    key={dayInfo.key}
+                    style={[
+                      styles.dayCell,
+                      isToday && styles.todayCell,
+                      isSelected && styles.selectedCell
+                    ]}
+                    onPress={() => handleDayPress(dayInfo)}
                     activeOpacity={0.7}
                   >
-                    <View style={[styles.taskStatus, { backgroundColor: getStatusColor(task.status) }]} />
-                    
-                    <View style={styles.taskContent}>
-                      <View style={styles.taskHeader}>
-                        <Text style={styles.taskTitle}>{task.taskType}</Text>
-                        <Text style={[styles.taskTime, { color: getStatusColor(task.status) }]}>
-                          {task.startTime || '00:00'}
-                        </Text>
+                    <Text style={[
+                      styles.dayText,
+                      isToday && styles.todayText,
+                      isSelected && styles.selectedText
+                    ]}>
+                      {dayInfo.day}
+                    </Text>
+                    {hasTasks && (
+                      <View style={styles.taskIndicator}>
+                        <Text style={styles.taskIndicatorText}>{tasksCount}</Text>
                       </View>
-                      
-                      <View style={styles.taskDetails}>
-                        <View style={styles.taskDetailRow}>
-                          <Text style={styles.taskDetailIcon}>👤</Text>
-                          <Text style={styles.taskDetailText}>
-                            {employee?.name || 'Non assigné'}
-                          </Text>
-                        </View>
-                        
-                        <View style={styles.taskDetailRow}>
-                          <Text style={styles.taskDetailIcon}>📍</Text>
-                          <Text style={styles.taskDetailText} numberOfLines={1}>
-                            {location}
-                          </Text>
-                        </View>
-                      </View>
-                      
-                      <View style={[styles.taskBadge, { backgroundColor: getStatusColor(task.status) + '20' }]}>
-                        <Text style={[styles.taskBadgeText, { color: getStatusColor(task.status) }]}>
-                          {getStatusText(task.status)}
-                        </Text>
-                      </View>
-                    </View>
+                    )}
                   </TouchableOpacity>
                 );
-              }}
-            />
-          )}
-        </View>
-      </ScrollView>
+              })}
+            </View>
+          </View>
 
-      {/* AJOUT: Bouton flottant pour ajouter une tâche */}
+          {/* Liste des tâches du jour sélectionné */}
+          <View style={styles.tasksList}>
+            <Text style={styles.tasksListTitle}>
+              Tâches du {selectedDate.toLocaleDateString('fr-FR', { 
+                weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' 
+              })}
+            </Text>
+
+            {selectedDateTasks.length === 0 ? (
+              <View style={styles.noTasksContainer}>
+                <Text style={styles.noTasksIcon}>📅</Text>
+                <Text style={styles.noTasksText}>Aucune tâche pour ce jour</Text>
+                <TouchableOpacity 
+                  style={styles.addFirstTaskButton}
+                  onPress={handleAddTask}
+                >
+                  <Text style={styles.addFirstTaskText}>➕ Ajouter une tâche</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <FlatList
+                data={selectedDateTasks}
+                scrollEnabled={false}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => <TaskCard task={item} />}
+              />
+            )}
+          </View>
+        </ScrollView>
+      )}
+
+      {/* Bouton flottant pour ajouter une tâche */}
       <TouchableOpacity 
         style={styles.fab}
         onPress={handleAddTask}
@@ -431,10 +533,27 @@ const TaskCalendar = ({ navigation } : { navigation: any }) => {
 
                   <View style={styles.modalSection}>
                     <Text style={styles.modalLabel}>Statut</Text>
-                    <View style={[styles.modalStatusBadge, { backgroundColor: getStatusColor(selectedTask.status) }]}>
-                      <Text style={styles.modalStatusText}>
-                        {getStatusText(selectedTask.status)}
-                      </Text>
+                    <View style={styles.statusSelector}>
+                      {['pending', 'in-progress', 'completed'].map(status => (
+                        <TouchableOpacity
+                          key={status}
+                          style={[
+                            styles.statusOption,
+                            selectedTask.status === status && { 
+                              backgroundColor: getStatusColor(status),
+                              borderColor: getStatusColor(status)
+                            }
+                          ]}
+                          onPress={() => handleStatusChange(selectedTask.id, status)}
+                        >
+                          <Text style={[
+                            styles.statusOptionText,
+                            selectedTask.status === status && styles.statusOptionTextActive
+                          ]}>
+                            {getStatusText(status)}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
                     </View>
                   </View>
 
@@ -495,6 +614,57 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: 'bold',
     color: '#FFFFFF',
+  },
+  // Styles pour les onglets
+  tabsContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    padding: 16,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
+    marginHorizontal: 4,
+  },
+  tabActive: {
+    backgroundColor: '#3B82F6',
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  tabTextActive: {
+    color: '#FFFFFF',
+  },
+  // Styles pour la vue Aujourd'hui
+  todayListContent: {
+    flexGrow: 1,
+    paddingBottom: 20,
+  },
+  todayHeader: {
+    backgroundColor: '#FFFFFF',
+    padding: 20,
+    marginBottom: 8,
+  },
+  todayTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginBottom: 8,
+  },
+  todayDate: {
+    fontSize: 16,
+    color: '#6B7280',
+    marginBottom: 8,
+  },
+  tasksCount: {
+    fontSize: 14,
+    color: '#3B82F6',
+    fontWeight: '600',
   },
   scrollView: {
     flex: 1,
@@ -628,7 +798,6 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     marginBottom: 16,
   },
-  // AJOUT: Style pour le bouton "Ajouter une tâche" quand il n'y a pas de tâches
   addFirstTaskButton: {
     backgroundColor: '#3B82F6',
     paddingHorizontal: 20,
@@ -705,7 +874,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  // AJOUT: Style pour le bouton flottant (FAB)
   fab: {
     position: 'absolute',
     right: 20,
@@ -786,16 +954,28 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#1F2937',
   },
-  modalStatusBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 16,
+  statusSelector: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
   },
-  modalStatusText: {
-    color: '#FFFFFF',
-    fontSize: 14,
+  statusOption: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    alignItems: 'center',
+  },
+  statusOptionText: {
+    fontSize: 12,
     fontWeight: '600',
+    color: '#6B7280',
+  },
+  statusOptionTextActive: {
+    color: '#FFFFFF',
   },
   recurringSection: {
     flexDirection: 'row',

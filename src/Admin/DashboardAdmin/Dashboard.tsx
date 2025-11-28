@@ -136,30 +136,37 @@ const AdminDashboard = ({ navigation }: AdminDashboardProps) => {
   };
 
   const StatCard = ({ title, value, color, icon, onPress }) => (
+
     <TouchableOpacity 
       style={[styles.statCard, { borderLeftColor: color }]}
       onPress={onPress}
       activeOpacity={0.7}
-    >
+      >
       <View style={styles.statCardContent}>
         <Text style={styles.statValue}>{value}</Text>
         <Text style={styles.statLabel}>{title}</Text>
       </View>
+
       <View style={[styles.statIcon, { backgroundColor: color + '20' }]}>
         <Text style={[styles.statIconText, { color }]}>{icon}</Text>
       </View>
+
     </TouchableOpacity>
   );
 
   const QuickActionCard = ({ title, description, color, icon, onPress }) => (
+
     <TouchableOpacity 
       style={[styles.actionCard, { backgroundColor: color }]}
       onPress={onPress}
-      activeOpacity={0.8}
-    >
+      activeOpacity={0.8}>
+
+
       <Text style={styles.actionIcon}>{icon}</Text>
       <Text style={styles.actionTitle}>{title}</Text>
       <Text style={styles.actionDescription}>{description}</Text>
+
+
     </TouchableOpacity>
   );
 
@@ -180,7 +187,7 @@ const AdminDashboard = ({ navigation }: AdminDashboardProps) => {
             {selectedCard === 'reclamations' && 'Détails des Réclamations'}
             {selectedCard === 'staff' && 'Détails du Personnel'}
           </Text>
-          
+
           {selectedCard === 'tasks' && (
             <View style={styles.modalDetails}>
               <View style={styles.detailRow}>
@@ -281,7 +288,7 @@ const AdminDashboard = ({ navigation }: AdminDashboardProps) => {
         {/* Statistiques principales */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Vue d'ensemble</Text>
-          
+
           <View style={styles.statsGrid}>
             <StatCard
               title="Tâches"
@@ -290,6 +297,7 @@ const AdminDashboard = ({ navigation }: AdminDashboardProps) => {
               icon="📋"
               onPress={() => setSelectedCard('tasks')}
             />
+
             <StatCard
               title="Terminées"
               value={stats.completedTasks}
@@ -297,6 +305,7 @@ const AdminDashboard = ({ navigation }: AdminDashboardProps) => {
               icon="✓"
               onPress={() => setSelectedCard('tasks')}
             />
+
             <StatCard
               title="En cours"
               value={stats.inProgressTasks}
@@ -304,6 +313,7 @@ const AdminDashboard = ({ navigation }: AdminDashboardProps) => {
               icon="⏳"
               onPress={() => setSelectedCard('tasks')}
             />
+
             <StatCard
               title="Réclamations"
               value={stats.totalReclamations}
@@ -311,6 +321,7 @@ const AdminDashboard = ({ navigation }: AdminDashboardProps) => {
               icon="⚠️"
               onPress={() => setSelectedCard('reclamations')}
             />
+
             <StatCard
               title="Urgentes"
               value={stats.urgentReclamations}
@@ -318,6 +329,7 @@ const AdminDashboard = ({ navigation }: AdminDashboardProps) => {
               icon="🔥"
               onPress={() => setSelectedCard('reclamations')}
             />
+
             <StatCard
               title="Personnel actif"
               value={stats.activeStaff}
@@ -382,8 +394,8 @@ const AdminDashboard = ({ navigation }: AdminDashboardProps) => {
               color="#179ca6ff"
               icon="🏠"
               onPress={() => navigation.navigate('Devis')}
-
             />
+
             <QuickActionCard
               title="Paramétres"
               description="Voir détails"
@@ -391,9 +403,7 @@ const AdminDashboard = ({ navigation }: AdminDashboardProps) => {
               icon="⚙️​"
               onPress={() => navigation.navigate('Devis')}
 
-            />
-
-                        
+            />            
               <QuickActionCard
               title="Chat"
               description="Voir détails"
@@ -402,14 +412,20 @@ const AdminDashboard = ({ navigation }: AdminDashboardProps) => {
               onPress={() => navigation.navigate('Chat')}
 
             />
+              <QuickActionCard
+              title="menu"
+              description="Voir détails"
+              color="#4766e0ff"
+              icon="💬​​💬​​"
+              onPress={() => navigation.navigate('menu')}
 
+            />
 
           </View>
         </View>
 
         {/* Indicateur de performance */}
         <View style={styles.section}>
-
 
           <Text style={styles.sectionTitle}>Performance</Text>
           
@@ -449,7 +465,6 @@ const AdminDashboard = ({ navigation }: AdminDashboardProps) => {
 
 
             </View>
-
 
             <View style={styles.progressBar}>
               <View 
@@ -674,6 +689,7 @@ const styles = StyleSheet.create({
     padding: 24,
     width: width - 40,
     maxWidth: 400,
+
   },
 
   modalTitle: {

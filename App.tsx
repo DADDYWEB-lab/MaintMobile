@@ -15,23 +15,26 @@ import Espaces from "./src/Admin/Espaces/Espaces";
 import Fournisseurs from "./src/Admin/Fournisseurs/Fournisseurs";
 import Devis from "./src/Admin/Devis/Devis";
 import Chat from './src/Admin/Chat/Chat'
-
-
-
-
-
-
+import Menu from './src/Admin/Menue/Menue'
 
 const Stack = createNativeStackNavigator();
 
 export default function App() {
   return (
     <NavigationContainer>
+
+
+
       <Stack.Navigator
         initialRouteName="Login"
         screenOptions={{ headerShown: false }}
       >
-        <Stack.Screen name="Login" component={LoginScreen} />
+
+
+
+        <Stack.Screen name="Login" 
+        component={LoginScreen} 
+        />
 
         <Stack.Screen
           name="DashboardAdmin"
@@ -39,8 +42,7 @@ export default function App() {
           options={{ headerShown: false }}
         />
 
-        {/* gestion des taches */}
-
+   {/* gestion des taches */}
         <Stack.Screen
           name="TaskCalendar"
           component={TaskCalendar}
@@ -69,21 +71,24 @@ export default function App() {
         <Stack.Screen
           name="Personnel"
           component={Personnel}
-
           options={{ title: "Gestion du Personnel" }}
         />
 
-        <Stack.Screen
+
+       <Stack.Screen
           name="AddStaff"
           component={AddStaffScreen}
           options={{ title: "Ajouter un membre" }}
         />
 
-        {/* Gestion des espaces */}
+
+
+      {/* Gestion des espaces */}
         <Stack.Screen
           name="Espaces"
           component={Espaces}
           options={{ title: "Ajouter un membre" }}
+
         />
 
 
@@ -107,7 +112,11 @@ export default function App() {
           component={Chat}
           options={{ title: "Gestion des Devis" }}
         />
-
+ <Stack.Screen
+          name="menu"
+          component={Menu}
+          options={{ title: "Gestion des Devis" }}
+        />
 
       </Stack.Navigator>
     </NavigationContainer>

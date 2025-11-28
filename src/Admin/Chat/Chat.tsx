@@ -1051,6 +1051,8 @@ const Messenger = ({ navigation }: any) => {
                   </View>
                   <Text style={styles.userCardArrow}>→</Text>
                 </TouchableOpacity>
+
+                
               ))}
             </ScrollView>
           </View>

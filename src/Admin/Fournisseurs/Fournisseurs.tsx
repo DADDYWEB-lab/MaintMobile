@@ -24,9 +24,39 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../../firebaseConfig';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
 
 const { width } = Dimensions.get('window');
+
+// Composant Icon personnalisé avec des emojis
+const Icon = ({ name, size = 24, color = '#000' }) => {
+  const icons = {
+    'search': '🔍',
+    'filter': '⚙️',
+    'close': '✕',
+    'add': '+',
+    'business': '🏢',
+    'cube': '📦',
+    'pricetag': '🏷️',
+    'chevron-down': '▼',
+    'chevron-up': '▲',
+    'call': '📞',
+    'mail': '✉️',
+    'create': '✏️',
+    'trash': '🗑️',
+    'add-circle': '➕',
+    'close-circle': '❌',
+    'eye': '🔍',
+    'eye-off': '🔍',
+    'download': '📥',
+    'cloud-upload': '📤',
+    'globe': '🌐',
+    'checkmark-circle': '✅',
+    'close-circle': '❌',
+    'business-outline': '🏢'
+  };
+  
+  return <Text style={{ fontSize: size * 0.8, color }}>{icons[name] || '•'}</Text>;
+};
 
 const GestionFournisseurs = ({ navigation }: any) => {
   const [fournisseurs, setFournisseurs] = useState([]);
@@ -46,6 +76,10 @@ const GestionFournisseurs = ({ navigation }: any) => {
   const [selectedProduit, setSelectedProduit] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [afficherRecherche, setAfficherRecherche] = useState(true);
+
+  // Nouvel état pour le menu FAB
+  const [showActionMenu, setShowActionMenu] = useState(false);
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -277,12 +311,62 @@ const GestionFournisseurs = ({ navigation }: any) => {
     setProduitForm(prev => ({ ...prev, logo: '' }));
   };
 
-  // Gestion des fournisseurs - CORRIGÉ
-  const handleSubmitFournisseur = async () => {
-    if (!fournisseurForm.nomEntreprise || !fournisseurForm.categorieId) {
-      Alert.alert('Erreur', 'Veuillez remplir les champs obligatoires (Nom et Catégorie)');
-      return;
+  // Fonction pour assombrir les couleurs
+  const darkenColor = (color, percent) => {
+    const num = parseInt(color.replace("#", ""), 16);
+    const amt = Math.round(2.55 * percent);
+    const R = (num >> 16) - amt;
+    const G = ((num >> 8) & 0x00FF) - amt;
+    const B = (num & 0x0000FF) - amt;
+    return "#" + (
+      0x1000000 +
+      (R < 255 ? (R < 0 ? 0 : R) : 255) * 0x10000 +
+      (G < 255 ? (G < 0 ? 0 : G) : 255) * 0x100 +
+      (B < 255 ? (B < 0 ? 0 : B) : 255)
+    ).toString(16).slice(1);
+  };
+
+  // Validation des formulaires
+  const isValidEmail = (email) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const validateFournisseurForm = () => {
+    if (!fournisseurForm.nomEntreprise.trim()) {
+      Alert.alert('Erreur', 'Le nom de l\'entreprise est obligatoire');
+      return false;
     }
+    if (!fournisseurForm.categorieId) {
+      Alert.alert('Erreur', 'Veuillez sélectionner une catégorie');
+      return false;
+    }
+    if (fournisseurForm.email && !isValidEmail(fournisseurForm.email)) {
+      Alert.alert('Erreur', 'L\'adresse email n\'est pas valide');
+      return false;
+    }
+    return true;
+  };
+
+  const validateProduitForm = () => {
+    if (!produitForm.reference.trim()) {
+      Alert.alert('Erreur', 'La référence du produit est obligatoire');
+      return false;
+    }
+    if (!produitForm.fournisseurId) {
+      Alert.alert('Erreur', 'Veuillez sélectionner un fournisseur');
+      return false;
+    }
+    if (produitForm.prix && isNaN(parseFloat(produitForm.prix))) {
+      Alert.alert('Erreur', 'Le prix doit être un nombre valide');
+      return false;
+    }
+    return true;
+  };
+
+  // Gestion des fournisseurs
+  const handleSubmitFournisseur = async () => {
+    if (!validateFournisseurForm()) return;
 
     setIsSubmitting(true);
     try {
@@ -314,12 +398,9 @@ const GestionFournisseurs = ({ navigation }: any) => {
     }
   };
 
-  // Gestion des produits - CORRIGÉ
+  // Gestion des produits
   const handleSubmitProduit = async () => {
-    if (!produitForm.reference || !produitForm.fournisseurId) {
-      Alert.alert('Erreur', 'Veuillez remplir les champs obligatoires (Référence et Fournisseur)');
-      return;
-    }
+    if (!validateProduitForm()) return;
 
     setIsSubmitting(true);
     try {
@@ -353,7 +434,7 @@ const GestionFournisseurs = ({ navigation }: any) => {
     }
   };
 
-  // Gestion des catégories - CORRIGÉ
+  // Gestion des catégories
   const handleSubmitCategorie = async () => {
     if (!categorieForm.nom) {
       Alert.alert('Erreur', 'Veuillez entrer un nom pour la catégorie');
@@ -440,11 +521,6 @@ const GestionFournisseurs = ({ navigation }: any) => {
     );
   };
 
-  // Fonction utilitaire pour assombrir les couleurs
-  const darkenColor = (color, percent) => {
-    return color;
-  };
-
   const renderLogo = (logoUrl, defaultIcon, size = 24) => {
     if (logoUrl) {
       return (
@@ -477,6 +553,61 @@ const GestionFournisseurs = ({ navigation }: any) => {
   // Statistiques
   const totalProduits = produits.length;
   const fournisseursActifs = fournisseurs.filter(f => f.statut === 'actif').length;
+
+  // Composant FAB avec menu
+  const FloatingActionMenu = () => (
+    <View style={styles.fabContainer}>
+      {showActionMenu && (
+        <Animated.View style={[styles.fabMenu, { opacity: fadeAnim }]}>
+          <TouchableOpacity
+            style={[styles.fabMenuItem, { backgroundColor: '#10b981' }]}
+            onPress={() => {
+              setShowCategorieModal(true);
+              setShowActionMenu(false);
+            }}
+          >
+            <Icon name="pricetag" size={20} color="white" />
+            <Text style={styles.fabMenuText}>Catégorie</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.fabMenuItem, { backgroundColor: '#F59E0B' }]}
+            onPress={() => {
+              resetProduitForm();
+              setShowProduitModal(true);
+              setShowActionMenu(false);
+            }}
+          >
+            <Icon name="cube" size={20} color="white" />
+            <Text style={styles.fabMenuText}>Produit</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.fabMenuItem, { backgroundColor: '#3B82F6' }]}
+            onPress={() => {
+              resetFournisseurForm();
+              setShowFournisseurModal(true);
+              setShowActionMenu(false);
+            }}
+          >
+            <Icon name="business" size={20} color="white" />
+            <Text style={styles.fabMenuText}>Fournisseur</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      )}
+      
+      <TouchableOpacity
+        style={styles.fabButton}
+        onPress={() => setShowActionMenu(!showActionMenu)}
+      >
+        <Icon 
+          name={showActionMenu ? "close" : "add"} 
+          size={24} 
+          color="white" 
+        />
+      </TouchableOpacity>
+    </View>
+  );
 
   // Composants UI
   const StatCard = ({ icon, label, value, colors }) => (
@@ -554,7 +685,7 @@ const GestionFournisseurs = ({ navigation }: any) => {
                   setShowProduitModal(true);
                 }}
               >
-                <Ionicons name="add-circle" size={20} color="white" />
+                <Icon name="add-circle" size={20} color="white" />
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -575,21 +706,21 @@ const GestionFournisseurs = ({ navigation }: any) => {
                   setShowFournisseurModal(true);
                 }}
               >
-                <Ionicons name="create" size={18} color="white" />
+                <Icon name="create" size={18} color="white" />
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={[styles.actionButton, { backgroundColor: 'rgba(239,68,68,0.8)' }]}
                 onPress={() => handleDeleteFournisseur(fournisseur)}
               >
-                <Ionicons name="trash" size={16} color="white" />
+                <Icon name="trash" size={16} color="white" />
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.actionButton}
                 onPress={() => toggleExpand(fournisseur.id)}
               >
-                <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={18} color="white" />
+                <Icon name={isExpanded ? "chevron-up" : "chevron-down"} size={18} color="white" />
               </TouchableOpacity>
             </View>
           </View>
@@ -597,13 +728,13 @@ const GestionFournisseurs = ({ navigation }: any) => {
           <View style={styles.contactInfo}>
             {fournisseur.telephone && (
               <View style={styles.contactItem}>
-                <Ionicons name="call" size={14} color="white" />
+                <Icon name="call" size={14} color="white" />
                 <Text style={styles.contactText}>{fournisseur.telephone}</Text>
               </View>
             )}
             {fournisseur.email && (
               <View style={styles.contactItem}>
-                <Ionicons name="mail" size={14} color="white" />
+                <Icon name="mail" size={14} color="white" />
                 <Text style={styles.contactText}>{fournisseur.email}</Text>
               </View>
             )}
@@ -658,14 +789,14 @@ const GestionFournisseurs = ({ navigation }: any) => {
                       setShowProduitModal(true);
                     }}
                   >
-                    <Ionicons name="create" size={14} color="white" />
+                    <Icon name="create" size={14} color="white" />
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     style={[styles.produitActionBtn, { backgroundColor: '#EF4444' }]}
                     onPress={() => handleDeleteProduit(produit)}
                   >
-                    <Ionicons name="trash" size={14} color="white" />
+                    <Icon name="trash" size={14} color="white" />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -676,23 +807,52 @@ const GestionFournisseurs = ({ navigation }: any) => {
     );
   };
 
+  // Actions rapides
+  const QuickActions = () => (
+    <View style={styles.quickActions}>
+      <TouchableOpacity 
+        style={styles.quickAction} 
+        onPress={() => setAfficherRecherche(!afficherRecherche)}
+      >
+        <Icon 
+          name={afficherRecherche ? "eye-off" : "eye"} 
+          size={20} 
+          color="white" 
+        />
+        <Text style={styles.quickActionText}>
+          {afficherRecherche ? 'Masquer' : 'Afficher'}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   return (
     <View style={styles.container}>
       {/* Header avec dégradé */}
       <LinearGradient
         colors={['#1E40AF', '#3B82F6']}
         style={styles.header}
-      >
+      > 
+        {/* Menu d'actions flottant */}
+        <FloatingActionMenu />
+
         <View style={styles.headerContent}>
-          <Text style={styles.title}>Gestion des Fournisseurs</Text>
-          <Text style={styles.subtitle}>Gérez vos fournisseurs et leurs produits</Text>
+          <View style={styles.headerTop}>
+            <View style={styles.headerTextContainer}>
+              <Text style={styles.title}>Gestion des Fournisseurs</Text>
+              <Text style={styles.subtitle}>Gérez vos fournisseurs et leurs produits</Text>
+            </View>
+            
+            {/* Actions rapides */}
+            <QuickActions />
+          </View>
           
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statsContainer}>
             <StatCard 
               icon="🏢" 
               label="Fournisseurs" 
               value={fournisseurs.length}
-              colors={['#6366F1', '#8B5CF6']}
+              colors={['#8B5CF6', '#7C3AED']}
             />
             <StatCard 
               icon="📦" 
@@ -706,85 +866,66 @@ const GestionFournisseurs = ({ navigation }: any) => {
               value={fournisseursActifs}
               colors={['#F59E0B', '#D97706']}
             />
+            <StatCard 
+              icon="📊" 
+              label="Catégories" 
+              value={categories.length}
+              colors={['#EC4899', '#DB2777']}
+            />
           </ScrollView>
         </View>
       </LinearGradient>
 
       {/* Barre de recherche et filtres */}
-      <View style={styles.filtersSection}>
-        <View style={styles.searchBox}>
-          <Ionicons name="search" size={20} color="#6B7280" style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Rechercher un fournisseur..."
-            value={searchTerm}
-            onChangeText={setSearchTerm}
-            placeholderTextColor="#9CA3AF"
-          />
-        </View>
+      {afficherRecherche && (
+        <View style={styles.filtersSection}>
+          <View style={styles.searchBox}>
+            <Icon name="search" size={20} color="#6B7280" />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Rechercher un fournisseur..."
+              value={searchTerm}
+              onChangeText={setSearchTerm}
+              placeholderTextColor="#9CA3AF"
+            />
+            {searchTerm.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchTerm('')}>
+                <Icon name="close-circle" size={20} color="#6B7280" />
+              </TouchableOpacity>
+            )}
+          </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesFilter}>
-          <TouchableOpacity
-            style={[styles.filterChip, filterCategorie === 'all' && styles.filterChipActive]}
-            onPress={() => setFilterCategorie('all')}
-          >
-            <Text style={[styles.filterChipText, filterCategorie === 'all' && styles.filterChipTextActive]}>
-              Tous
-            </Text>
-          </TouchableOpacity>
-          
-          {categories.map(categorie => (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesFilter}>
             <TouchableOpacity
-              key={categorie.id}
-              style={[
-                styles.filterChip,
-                { borderColor: categorie.couleur },
-                filterCategorie === categorie.id && { backgroundColor: categorie.couleur }
-              ]}
-              onPress={() => setFilterCategorie(categorie.id)}
+              style={[styles.filterChip, filterCategorie === 'all' && styles.filterChipActive]}
+              onPress={() => setFilterCategorie('all')}
             >
-              <Text style={[
-                styles.filterChipText,
-                filterCategorie === categorie.id && styles.filterChipTextActive
-              ]}>
-                {categorie.icone} {categorie.nom}
+              <Text style={[styles.filterChipText, filterCategorie === 'all' && styles.filterChipTextActive]}>
+                Tous
               </Text>
             </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-
-      {/* Boutons d'action */}
-      <View style={styles.actionsContainer}>
-        <TouchableOpacity
-          style={styles.primaryButton}
-          onPress={() => {
-            resetFournisseurForm();
-            setShowFournisseurModal(true);
-          }}
-        >
-          <LinearGradient
-            colors={['#4F46E5', '#6366F1']}
-            style={styles.buttonGradient}
-          >
-            <Ionicons name="business" size={20} color="white" />
-            <Text style={styles.primaryButtonText}>Nouveau Fournisseur</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.secondaryButton}
-          onPress={() => setShowCategorieModal(true)}
-        >
-          <LinearGradient
-            colors={['#10B981', '#059669']}
-            style={styles.buttonGradient}
-          >
-            <Ionicons name="pricetag" size={18} color="white" />
-            <Text style={styles.secondaryButtonText}>Nouvelle Catégorie</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-      </View>
+            
+            {categories.map(categorie => (
+              <TouchableOpacity
+                key={categorie.id}
+                style={[
+                  styles.filterChip,
+                  { borderColor: categorie.couleur },
+                  filterCategorie === categorie.id && { backgroundColor: categorie.couleur }
+                ]}
+                onPress={() => setFilterCategorie(categorie.id)}
+              >
+                <Text style={[
+                  styles.filterChipText,
+                  filterCategorie === categorie.id && styles.filterChipTextActive
+                ]}>
+                  {categorie.icone} {categorie.nom}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
 
       {/* Liste des fournisseurs */}
       <ScrollView
@@ -801,7 +942,7 @@ const GestionFournisseurs = ({ navigation }: any) => {
       >
         {filteredFournisseurs.length === 0 ? (
           <View style={styles.emptyState}>
-            <Ionicons name="business-outline" size={64} color="#9CA3AF" />
+            <Icon name="business-outline" size={64} color="#9CA3AF" />
             <Text style={styles.emptyStateTitle}>Aucun fournisseur trouvé</Text>
             <Text style={styles.emptyStateText}>
               {searchTerm || filterCategorie !== 'all' 
@@ -824,6 +965,9 @@ const GestionFournisseurs = ({ navigation }: any) => {
             <FournisseurCard key={fournisseur.id} fournisseur={fournisseur} />
           ))
         )}
+        
+        {/* Espace pour le FAB */}
+        <View style={styles.fabSpacer} />
       </ScrollView>
 
       {/* Modal Fournisseur */}
@@ -1161,8 +1305,11 @@ const GestionFournisseurs = ({ navigation }: any) => {
                         <Text style={styles.colorCheckmark}>✓</Text>
                       )}
                     </TouchableOpacity>
+
+                            
                   ))}
-                </View>
+                </View> 
+
               </View>
 
               <View style={styles.formGroup}>
@@ -1213,7 +1360,8 @@ const GestionFournisseurs = ({ navigation }: any) => {
   );
 };
 
-// Styles complets
+
+// Les styles restent exactement les mêmes que dans le code précédent
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -1229,9 +1377,21 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 8,
-  },
+  }    
+  ,
+  
   headerContent: {
     marginTop: 10,
+  },
+
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 20,
+  },
+  headerTextContainer: {
+    flex: 1,
   },
   title: {
     fontSize: 32,
@@ -1244,9 +1404,12 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.9)',
     marginBottom: 24,
   },
+
   statsContainer: {
     flexDirection: 'row',
   },
+
+
   statCard: {
     marginRight: 16,
     borderRadius: 16,
@@ -1254,7 +1417,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
-    elevation: 6,
+    elevation: 12,
+
   },
   statGradient: {
     padding: 20,
@@ -1301,12 +1465,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E5E7EB',
   },
-  searchIcon: {
-    marginRight: 12,
-  },
   searchInput: {
     flex: 1,
     paddingVertical: 14,
+    paddingHorizontal: 8,
     fontSize: 16,
     color: '#1F2937',
   },
@@ -1334,50 +1496,77 @@ const styles = StyleSheet.create({
   filterChipTextActive: {
     color: 'white',
   },
-  actionsContainer: {
+  quickActions: {
     flexDirection: 'row',
-    padding: 20,
-    gap: 12,
-  },
-  primaryButton: {
-    flex: 1,
-    borderRadius: 12,
-    shadowColor: '#4F46E5',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  secondaryButton: {
-    flex: 1,
-    borderRadius: 12,
-    shadowColor: '#10B981',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  buttonGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-    borderRadius: 12,
     gap: 8,
   },
-  primaryButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 16,
+  quickAction: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    padding: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+    minWidth: 60,
   },
-  secondaryButtonText: {
+  quickActionText: {
     color: 'white',
-    fontWeight: 'bold',
-    fontSize: 16,
+    fontSize: 10,
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  // Styles pour le FAB
+  fabContainer: {
+    position: 'absolute',
+    bottom: 210,
+    right: 30,
+    alignItems: 'flex-end',
+    zIndex: 1000,
+  },
+  fabButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#dcbde8ff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  fabMenu: {
+    position: 'absolute',
+    bottom: -140,
+    right: 60,
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 6,
+    minWidth: 150,
+  },
+  fabMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  fabMenuText: {
+    color: 'white',
+    fontWeight: '600',
+    marginLeft: 8,
+    fontSize: 14,
   },
   fournisseursList: {
     flex: 1,
     padding: 20,
+  },
+  fabSpacer: {
+    height: 100,
   },
   fournisseurCard: {
     borderRadius: 16,
@@ -1739,9 +1928,6 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
   },
-
-
-
   colorOption: {
     width: 40,
     height: 40,
@@ -1749,9 +1935,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-
-
   colorOptionActive: {
     borderWidth: 3,
     borderColor: 'white',
@@ -1761,9 +1944,6 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 4,
   },
-
-
-
   colorCheckmark: {
     color: 'white',
     fontSize: 16,
@@ -1790,14 +1970,12 @@ const styles = StyleSheet.create({
   iconText: {
     fontSize: 20,
   },
-
   modalActions: {
     flexDirection: 'row',
     padding: 20,
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
   },
-
   modalButton: {
     flex: 1,
     padding: 16,
@@ -1805,29 +1983,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   cancelButton: {
     backgroundColor: '#F3F4F6',
     marginRight: 12,
   },
-
   cancelButtonText: {
     color: '#374151',
     fontSize: 16,
     fontWeight: '600',
   },
-
   submitButton: {
     backgroundColor: '#3B82F6',
   },
-
   submitButtonText: {
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
   },
-  
 });
 
 export default GestionFournisseurs;
-
