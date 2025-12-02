@@ -160,6 +160,9 @@ export default function NeumorphicGlassDashboard() {
                   ))}
                 </View>
 
+
+
+
                 {/* Pagination dots */}
                 <View style={styles.pagination}>
                   <View style={[styles.paginationDot, styles.paginationDotInactive]} />
@@ -226,6 +229,7 @@ export default function NeumorphicGlassDashboard() {
               </TouchableOpacity>
             </View>
 
+
             {/* Bottom navigation */}
             <View style={styles.bottomNav}>
               <TouchableOpacity style={styles.navIcon}>
@@ -246,10 +250,22 @@ export default function NeumorphicGlassDashboard() {
         </View>
       </LinearGradient>
     </View>
+
+
   );
 }
 
-const styles = StyleSheet.create({
+
+
+
+
+
+
+
+
+const styles = 
+
+StyleSheet.create({
   container: {
     flex: 1,
   },
@@ -272,6 +288,7 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 10,
   },
+
   cardBlur: {
     flex: 1,
     borderRadius: 40,
@@ -281,27 +298,32 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 20,
   },
+
   topBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 24,
   },
+
   topLeft: {
     flexDirection: 'row',
     gap: 8,
   },
+
   statusDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: '#CBD5E1',
   },
+
   topCenter: {
     position: 'absolute',
     left: '50%',
     marginLeft: -20,
   },
+
   profileButton: {
     width: 40,
     height: 40,
@@ -309,24 +331,29 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: 'rgba(203, 213, 225, 0.5)',
   },
+
   profileBlur: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
+
   profileIcon: {
     fontSize: 18,
   },
+
   menuButton: {
     gap: 4,
     padding: 8,
   },
+
   menuLine: {
     width: 20,
     height: 2,
     backgroundColor: '#94A3B8',
     borderRadius: 1,
   },
+
   recentsSection: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -334,25 +361,30 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     paddingHorizontal: 4,
   },
+
   recentsHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
+
   clockIcon: {
     width: 20,
     height: 20,
     justifyContent: 'center',
     alignItems: 'center',
   },
+
   clockEmoji: {
     fontSize: 16,
   },
+
   recentsText: {
     fontSize: 14,
     color: '#64748B',
     fontWeight: '600',
   },
+
   gridIcon: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -360,23 +392,28 @@ const styles = StyleSheet.create({
     height: 16,
     gap: 3,
   },
+
+
   gridDot: {
     width: 5,
     height: 5,
     backgroundColor: '#CBD5E1',
     borderRadius: 1,
   },
+
   projectsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     marginBottom: 20,
   },
+
   projectWrapper: {
     width: '31%',
     alignItems: 'center',
     marginBottom: 20,
   },
+
   projectCard: {
     width: '100%',
     aspectRatio: 1,
@@ -389,65 +426,78 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
+
   projectIconContainer: {
     flex: 1,
     borderRadius: 24,
     overflow: 'hidden',
   },
+
   projectIconBlur: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
+
   projectIcon: {
     fontSize: 32,
   },
+
   projectTitle: {
     fontSize: 12,
     fontWeight: '700',
     color: '#1E293B',
     marginBottom: 2,
   },
+
   projectSubtitle: {
     fontSize: 10,
     color: '#94A3B8',
     fontWeight: '500',
   },
+
   pagination: {
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 8,
     marginBottom: 20,
   },
+
   paginationDot: {
     height: 6,
     borderRadius: 3,
   },
+
   paginationDotInactive: {
     width: 6,
     backgroundColor: '#CBD5E1',
   },
+
   paginationDotActive: {
     width: 24,
     backgroundColor: '#64748B',
   },
+
   bottomPlaceholder: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
   },
+
   placeholderIcon: {
     width: 40,
     height: 40,
     borderRadius: 20,
     backgroundColor: 'rgba(203, 213, 225, 0.3)',
   },
+
   placeholderIconLarge: {
     width: 60,
     height: 40,
     borderRadius: 20,
     backgroundColor: 'rgba(203, 213, 225, 0.3)',
   },
+
   bottomCardWrapper: {
     height: height * 0.35,
     borderRadius: 40,
@@ -463,6 +513,7 @@ const styles = StyleSheet.create({
     padding: 20,
     position: 'relative',
   },
+
   glowPurple: {
     position: 'absolute',
     top: -50,
@@ -474,6 +525,7 @@ const styles = StyleSheet.create({
     opacity: 0.15,
     blur: 50,
   },
+
   glowBlue: {
     position: 'absolute',
     bottom: -50,
@@ -485,39 +537,47 @@ const styles = StyleSheet.create({
     opacity: 0.15,
     blur: 50,
   },
+
   datesContainer: {
     flexDirection: 'row',
     gap: 8,
     marginBottom: 30,
   },
+
   datePill: {
     flex: 1,
     borderRadius: 16,
     overflow: 'hidden',
     backgroundColor: 'rgba(51, 65, 85, 0.6)',
   },
+
   datePillActive: {
     backgroundColor: 'rgba(99, 102, 241, 0.4)',
   },
+
   datePillBlur: {
     paddingVertical: 12,
     alignItems: 'center',
   },
+
   dateNumber: {
     fontSize: 18,
     fontWeight: '700',
     color: '#FFFFFF',
   },
+
   dateMonth: {
     fontSize: 11,
     color: '#A5B4FC',
     fontWeight: '600',
     marginTop: 2,
   },
+
   centerButtonContainer: {
     alignItems: 'center',
     marginBottom: 30,
   },
+
   centerButton: {
     width: 64,
     height: 64,
@@ -528,31 +588,38 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 10,
   },
+
   centerButtonGradient: {
     flex: 1,
     borderRadius: 32,
     overflow: 'hidden',
   },
+
   centerButtonBlur: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
+
   centerButtonIcon: {
     fontSize: 32,
   },
+
   bottomNav: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
   },
+
   navIcon: {
     padding: 8,
   },
+
   navIconText: {
     fontSize: 20,
     opacity: 0.5,
   },
+
   navSpacer: {
     width: 64,
   },

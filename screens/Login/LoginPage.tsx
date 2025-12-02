@@ -1,3 +1,5 @@
+
+//@ts-nocheck
 import React, { useState } from "react";
 import { View, Text, TextInput, Button, StyleSheet, Alert } from "react-native";
 import { auth, db } from "../../firebaseConfig";
@@ -48,7 +50,7 @@ export default function LoginPage() {
       // Redirection selon le rôle
       switch(userRole) {
         case "admin":
-          navigation.navigate("Dashboard");
+          navigation.navigate("Dashboard2");
           break;
         case "chef-maintenance":
           navigation.navigate("ChefMaintenance");

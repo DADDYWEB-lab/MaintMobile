@@ -16,6 +16,7 @@ import Fournisseurs from "./src/Admin/Fournisseurs/Fournisseurs";
 import Devis from "./src/Admin/Devis/Devis";
 import Chat from './src/Admin/Chat/Chat'
 import Menu from './src/Admin/Menue/Menue'
+import Dashboard2  from './src/Admin/DashboardAdmin/Dashboard2'
 
 const Stack = createNativeStackNavigator();
 
@@ -41,6 +42,12 @@ export default function App() {
           component={DashboardAdmin}
           options={{ headerShown: false }}
         />
+        <Stack.Screen
+          name="Dashboard2"
+          component={Dashboard2}
+          options={{ headerShown: false }}
+        />
+
 
    {/* gestion des taches */}
         <Stack.Screen

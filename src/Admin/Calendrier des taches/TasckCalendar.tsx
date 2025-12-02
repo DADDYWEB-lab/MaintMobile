@@ -436,6 +436,7 @@ const TaskCalendar = ({ navigation }: { navigation: any }) => {
                 weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' 
               })}
             </Text>
+            
 
             {selectedDateTasks.length === 0 ? (
               <View style={styles.noTasksContainer}>
@@ -455,6 +456,7 @@ const TaskCalendar = ({ navigation }: { navigation: any }) => {
                 keyExtractor={(item) => item.id}
                 renderItem={({ item }) => <TaskCard task={item} />}
               />
+
             )}
           </View>
         </ScrollView>
@@ -484,6 +486,7 @@ const TaskCalendar = ({ navigation }: { navigation: any }) => {
           <View style={styles.modalContent}>
             {selectedTask && (
               <>
+              
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>Détails de la tâche</Text>
                   <TouchableOpacity 
@@ -514,12 +517,18 @@ const TaskCalendar = ({ navigation }: { navigation: any }) => {
                     </Text>
                   </View>
 
+
+
                   <View style={styles.modalSection}>
                     <Text style={styles.modalLabel}>Date</Text>
                     <Text style={styles.modalValue}>
                       {new Date(selectedTask.date || selectedDate).toLocaleDateString('fr-FR', {
                         weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
-                      })}
+   
+              
+                        
+                        
+                   })}
                     </Text>
                   </View>
 
@@ -530,6 +539,7 @@ const TaskCalendar = ({ navigation }: { navigation: any }) => {
                       {selectedTask.endTime && ` - ${selectedTask.endTime}`}
                     </Text>
                   </View>
+
 
                   <View style={styles.modalSection}>
                     <Text style={styles.modalLabel}>Statut</Text>
@@ -544,8 +554,14 @@ const TaskCalendar = ({ navigation }: { navigation: any }) => {
                               borderColor: getStatusColor(status)
                             }
                           ]}
-                          onPress={() => handleStatusChange(selectedTask.id, status)}
-                        >
+                         
+
+
+
+                         onPress={() => handleStatusChange(selectedTask.id, status)}   >
+
+
+
                           <Text style={[
                             styles.statusOptionText,
                             selectedTask.status === status && styles.statusOptionTextActive
@@ -557,12 +573,16 @@ const TaskCalendar = ({ navigation }: { navigation: any }) => {
                     </View>
                   </View>
 
+
+
                   {selectedTask.notes && (
                     <View style={styles.modalSection}>
                       <Text style={styles.modalLabel}>Notes</Text>
                       <Text style={styles.modalValue}>{selectedTask.notes}</Text>
                     </View>
                   )}
+
+
 
                   {selectedTask.isRecurring && (
                     <View style={[styles.modalSection, styles.recurringSection]}>
@@ -572,6 +592,9 @@ const TaskCalendar = ({ navigation }: { navigation: any }) => {
                   )}
                 </ScrollView>
               </>
+
+
+
             )}
           </View>
         </Pressable>
@@ -585,42 +608,50 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F3F4F6',
   },
+
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#F3F4F6',
   },
+
   loadingText: {
     marginTop: 16,
     fontSize: 16,
     color: '#6B7280',
-  },
+  },   
+
   header: {
     backgroundColor: '#3B82F6',
     paddingTop: 50,
     paddingBottom: 20,
     paddingHorizontal: 20,
   },
+
   backButton: {
     marginBottom: 10,
-  },
+  },  
+
   backButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '500',
   },
+
   headerTitle: {
     fontSize: 28,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
+
   // Styles pour les onglets
   tabsContainer: {
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
     padding: 16,
-  },
+  },       
+
   tab: {
     flex: 1,
     paddingVertical: 12,
@@ -629,46 +660,56 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3F4F6',
     marginHorizontal: 4,
   },
+
   tabActive: {
     backgroundColor: '#3B82F6',
   },
+
   tabText: {
     fontSize: 14,
     fontWeight: '600',
     color: '#6B7280',
   },
+
   tabTextActive: {
     color: '#FFFFFF',
   },
+
   // Styles pour la vue Aujourd'hui
   todayListContent: {
     flexGrow: 1,
     paddingBottom: 20,
   },
+
   todayHeader: {
     backgroundColor: '#FFFFFF',
     padding: 20,
     marginBottom: 8,
   },
+
   todayTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#1F2937',
     marginBottom: 8,
   },
+
   todayDate: {
     fontSize: 16,
     color: '#6B7280',
     marginBottom: 8,
   },
+
   tasksCount: {
     fontSize: 14,
     color: '#3B82F6',
     fontWeight: '600',
   },
+
   scrollView: {
     flex: 1,
   },
+
   calendarHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -678,6 +719,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
+
   navButton: {
     width: 40,
     height: 40,
@@ -686,53 +728,65 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: '#F3F4F6',
   },
+
   navButtonText: {
     fontSize: 24,
     color: '#3B82F6',
     fontWeight: 'bold',
   },
+
   monthYearContainer: {
     alignItems: 'center',
   },
+
   monthYearText: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#1F2937',
     marginBottom: 8,
   },
+
   todayButton: {
     paddingHorizontal: 12,
     paddingVertical: 4,
     backgroundColor: '#3B82F6',
     borderRadius: 12,
   },
+
   todayButtonText: {
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '600',
   },
+
   calendarContainer: {
     backgroundColor: '#FFFFFF',
     padding: 10,
   },
+
+
   weekDaysRow: {
     flexDirection: 'row',
     marginBottom: 10,
   },
+
   weekDayCell: {
     width: (width - 20) / 7,
     alignItems: 'center',
     paddingVertical: 8,
   },
+
   weekDayText: {
     fontSize: 12,
     fontWeight: '600',
     color: '#6B7280',
   },
+
   daysGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
   },
+
   dayCell: {
     width: (width - 20) / 7,
     height: 60,
@@ -741,25 +795,31 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     borderColor: '#E5E7EB',
   },
+
   todayCell: {
     backgroundColor: '#DBEAFE',
   },
+
   selectedCell: {
     backgroundColor: '#3B82F6',
   },
+
   dayText: {
     fontSize: 16,
     color: '#1F2937',
     fontWeight: '500',
   },
+
   todayText: {
     color: '#3B82F6',
     fontWeight: 'bold',
   },
+
   selectedText: {
     color: '#FFFFFF',
     fontWeight: 'bold',
   },
+
   taskIndicator: {
     position: 'absolute',
     bottom: 4,
@@ -771,33 +831,40 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 4,
   },
+
   taskIndicatorText: {
     color: '#FFFFFF',
     fontSize: 10,
     fontWeight: 'bold',
   },
+
   tasksList: {
     padding: 20,
   },
+
   tasksListTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: '#1F2937',
     marginBottom: 16,
   },
+
   noTasksContainer: {
     alignItems: 'center',
     paddingVertical: 40,
   },
+
   noTasksIcon: {
     fontSize: 48,
     marginBottom: 12,
   },
+
   noTasksText: {
     fontSize: 16,
     color: '#6B7280',
     marginBottom: 16,
   },
+
   addFirstTaskButton: {
     backgroundColor: '#3B82F6',
     paddingHorizontal: 20,
@@ -806,11 +873,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+
   addFirstTaskText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
   },
+
   taskCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
@@ -823,57 +892,69 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+
   taskStatus: {
     width: 4,
   },
+
   taskContent: {
     flex: 1,
     padding: 16,
   },
+
   taskHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
   },
+
   taskTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#1F2937',
     flex: 1,
   },
+
   taskTime: {
     fontSize: 14,
     fontWeight: '600',
     marginLeft: 8,
   },
+
   taskDetails: {
     marginBottom: 12,
   },
+
   taskDetailRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 6,
   },
+
   taskDetailIcon: {
     fontSize: 14,
     marginRight: 8,
   },
+
   taskDetailText: {
     fontSize: 14,
     color: '#6B7280',
     flex: 1,
   },
+
   taskBadge: {
     alignSelf: 'flex-start',
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
   },
+
   taskBadgeText: {
-    fontSize: 12,
+    fontSize: 12,   
     fontWeight: '600',
   },
+
   fab: {
     position: 'absolute',
     right: 20,
@@ -890,28 +971,34 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
+
   fabIcon: {
     color: '#FFFFFF',
     fontSize: 24,
     fontWeight: 'bold',
     marginRight: 8,
   },
+
   fabText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
-  },
+  }
+  ,
+
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
   },
+
   modalContent: {
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     maxHeight: '80%',
   },
+  
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -920,6 +1007,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
+
   modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',

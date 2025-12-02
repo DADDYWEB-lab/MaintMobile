@@ -876,6 +876,8 @@ const GestionFournisseurs = ({ navigation }: any) => {
         </View>
       </LinearGradient>
 
+
+
       {/* Barre de recherche et filtres */}
       {afficherRecherche && (
         <View style={styles.filtersSection}>
@@ -1040,6 +1042,8 @@ const GestionFournisseurs = ({ navigation }: any) => {
                   />
                 </View>
 
+
+
                 <View style={[styles.formGroup, styles.formGroupHalf]}>
                   <Text style={styles.label}>Email</Text>
                   <TextInput
@@ -1064,21 +1068,52 @@ const GestionFournisseurs = ({ navigation }: any) => {
                         { borderColor: categorie.couleur },
                         fournisseurForm.categorieId === categorie.id && { backgroundColor: categorie.couleur + '20' }
                       ]}
-                      onPress={() => setFournisseurForm(prev => ({ ...prev, categorieId: categorie.id }))}
-                    >
+
+                      onPress={() => setFournisseurForm(prev => ({ ...prev, categorieId: categorie.id }))} >
+
                       <Text style={styles.categorieIcon}>{categorie.icone}</Text>
                       <Text style={styles.categorieName}>{categorie.nom}</Text>
                       <Text style={styles.categorieExemples}>{categorie.exemples}</Text>
                       {fournisseurForm.categorieId === categorie.id && (
                         <Text style={[styles.checkmark, { color: categorie.couleur }]}>✓</Text>
+
+
+
                       )}
+
+
                     </TouchableOpacity>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
                   ))}
+
                 </ScrollView>
               </View>
 
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Description</Text>
+
                 <TextInput
                   style={[styles.input, styles.textArea]}
                   value={fournisseurForm.description}
@@ -1099,9 +1134,11 @@ const GestionFournisseurs = ({ navigation }: any) => {
                 }}
                 disabled={isSubmitting}
               >
-                <Text style={styles.cancelButtonText}>Annuler</Text>
+
+              <Text style={styles.cancelButtonText}>Annuler</Text>
               </TouchableOpacity>
               
+
               <TouchableOpacity
                 style={[styles.modalButton, styles.submitButton]}
                 onPress={handleSubmitFournisseur}
@@ -1115,6 +1152,8 @@ const GestionFournisseurs = ({ navigation }: any) => {
           </View>
         </View>
       </Modal>
+      
+
 
       {/* Modal Produit */}
       <Modal
@@ -1124,12 +1163,13 @@ const GestionFournisseurs = ({ navigation }: any) => {
         onRequestClose={() => {
           setShowProduitModal(false);
           resetProduitForm();
-        }}
-      >
+        }} >
+
+
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
-              {selectedProduit ? 'Modifier le produit' : 'Nouveau produit'}
+              {selectedProduit ? 'Modifier le prod' : 'Nouveau produit'}
             </Text>
 
             <ScrollView style={styles.formContainer}>
@@ -1154,8 +1194,9 @@ const GestionFournisseurs = ({ navigation }: any) => {
                           styles.uniteChip,
                           produitForm.unite === unite.value && styles.uniteChipActive
                         ]}
-                        onPress={() => setProduitForm(prev => ({ ...prev, unite: unite.value }))}
-                      >
+
+                        onPress={() => setProduitForm(prev => ({ ...prev, unite: unite.value }))} >
+
                         <Text style={[
                           styles.uniteChipText,
                           produitForm.unite === unite.value && styles.uniteChipTextActive
@@ -1166,7 +1207,9 @@ const GestionFournisseurs = ({ navigation }: any) => {
                     ))}
                   </ScrollView>
                 </View>
+
               </View>
+
 
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Nom du produit</Text>
@@ -1177,6 +1220,7 @@ const GestionFournisseurs = ({ navigation }: any) => {
                   placeholder="Ex: Savon liquide"
                 />
               </View>
+
 
               <View style={styles.formRow}>
                 <View style={[styles.formGroup, styles.formGroupHalf]}>
@@ -1189,6 +1233,7 @@ const GestionFournisseurs = ({ navigation }: any) => {
                     keyboardType="decimal-pad"
                   />
                 </View>
+
 
                 <View style={[styles.formGroup, styles.formGroupHalf]}>
                   <Text style={styles.label}>Stock</Text>
@@ -1205,6 +1250,7 @@ const GestionFournisseurs = ({ navigation }: any) => {
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Fournisseur *</Text>
                 <ScrollView style={styles.fournisseursGrid} nestedScrollEnabled={true}>
+
                   {fournisseurs.map(fournisseur => (
                     <TouchableOpacity
                       key={fournisseur.id}
@@ -1218,13 +1264,16 @@ const GestionFournisseurs = ({ navigation }: any) => {
                       <Text style={styles.fournisseurOptionText}>{fournisseur.nomEntreprise}</Text>
                       {produitForm.fournisseurId === fournisseur.id && (
                         <Text style={styles.checkmark}>✓</Text>
+
                       )}
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
               </View>
 
-              <View style={styles.formGroup}>
+              
+
+          <View style={styles.formGroup}>
                 <Text style={styles.label}>Description</Text>
                 <TextInput
                   style={[styles.input, styles.textArea]}
@@ -1234,10 +1283,14 @@ const GestionFournisseurs = ({ navigation }: any) => {
                   multiline
                   numberOfLines={3}
                 />
+
               </View>
             </ScrollView>
 
             <View style={styles.modalActions}>
+
+
+
               <TouchableOpacity
                 style={[styles.modalButton, styles.cancelButton]}
                 onPress={() => {
@@ -1253,9 +1306,12 @@ const GestionFournisseurs = ({ navigation }: any) => {
                 style={[styles.modalButton, styles.submitButton]}
                 onPress={handleSubmitProduit}
                 disabled={isSubmitting}
+              
               >
+
                 <Text style={styles.submitButtonText}>
                   {isSubmitting ? '...' : (selectedProduit ? 'Modifier' : 'Créer')}
+
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1264,6 +1320,7 @@ const GestionFournisseurs = ({ navigation }: any) => {
       </Modal>
 
       {/* Modal Catégorie */}
+
       <Modal
         visible={showCategorieModal}
         animationType="slide"
@@ -1271,9 +1328,12 @@ const GestionFournisseurs = ({ navigation }: any) => {
         onRequestClose={() => {
           setShowCategorieModal(false);
           resetCategorieForm();
+        
         }}
+
       >
         <View style={styles.modalOverlay}>
+
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Nouvelle catégorie</Text>
 
@@ -1289,6 +1349,7 @@ const GestionFournisseurs = ({ navigation }: any) => {
               </View>
 
               <View style={styles.formGroup}>
+
                 <Text style={styles.label}>Couleur</Text>
                 <View style={styles.colorsContainer}>
                   {['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#6366F1', '#14B8A6'].map(color => (

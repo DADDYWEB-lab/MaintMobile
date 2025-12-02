@@ -51,7 +51,7 @@ const LoginScreen = ({ navigation }: { navigation: any })=> {
       setLoading(false);
       switch (userRole) {
         case 'admin':
-          navigation.replace('DashboardAdmin');
+          navigation.replace('Dashboard2');
           break;
         case 'chef-maintenance':
           navigation.replace('ChefMaintenance');

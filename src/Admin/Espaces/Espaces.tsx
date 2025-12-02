@@ -277,7 +277,7 @@ const GestionEspacesHierarchie = ({ navigation }: any) => {
           createdAt: serverTimestamp()
         });
         Alert.alert('Succès', 'Espace créé !');
-        
+
         setQrCodeData({
           valeur: docRef.id,
           titre: espaceForm.nom
@@ -318,7 +318,7 @@ const GestionEspacesHierarchie = ({ navigation }: any) => {
           createdAt: serverTimestamp()
         });
         Alert.alert('Succès', 'Sous-espace créé !');
-        
+
         setQrCodeData({
           valeur: docRef.id,
           titre: `${sousEspaceForm.numero} - ${sousEspaceForm.nom || ''}`
@@ -470,7 +470,7 @@ const GestionEspacesHierarchie = ({ navigation }: any) => {
   // Supprimer un espace
   const handleDeleteEspace = async (espace) => {
     const sousEspacesCount = getSousEspacesByParent(espace.id).length;
-    
+
     Alert.alert(
       'Confirmer la suppression',
       `Êtes-vous sûr de vouloir supprimer l'espace "${espace.nom}" ?\n\n` +
@@ -566,10 +566,10 @@ const GestionEspacesHierarchie = ({ navigation }: any) => {
 
   // Composants UI améliorés
   const StatCard = ({ icon, label, value, colors }) => (
-    <Animated.View 
+    <Animated.View
       style={[
         styles.statCard,
-        { 
+        {
           opacity: fadeAnim,
           transform: [{ translateY: slideAnim }]
         }
@@ -598,10 +598,10 @@ const GestionEspacesHierarchie = ({ navigation }: any) => {
     const isExpanded = expandedEspaces[espace.id];
 
     return (
-      <Animated.View 
+      <Animated.View
         style={[
           styles.espaceCard,
-          { 
+          {
             opacity: fadeAnim,
             transform: [{ translateY: slideAnim }]
           }
@@ -611,7 +611,7 @@ const GestionEspacesHierarchie = ({ navigation }: any) => {
           colors={[categorie?.couleur || '#6B7280', darkenColor(categorie?.couleur || '#6B7280', 20)]}
           style={styles.espaceHeader}
         >
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.espaceHeaderContent}
             onPress={() => toggleExpand(espace.id)}
           >
@@ -637,10 +637,10 @@ const GestionEspacesHierarchie = ({ navigation }: any) => {
               </View>
             </View>
 
-            <Ionicons 
-              name={isExpanded ? "chevron-up" : "chevron-down"} 
-              size={20} 
-              color="white" 
+            <Ionicons
+              name={isExpanded ? "chevron-up" : "chevron-down"}
+              size={20}
+              color="white"
             />
           </TouchableOpacity>
         </LinearGradient>
@@ -719,9 +719,9 @@ const GestionEspacesHierarchie = ({ navigation }: any) => {
               <View style={styles.sousEspacesContainer}>
                 <Text style={styles.sousEspacesTitle}>Sous-espaces</Text>
                 {sousEspacesEnfants.map(sousEspace => (
-                  <SousEspaceCard 
-                    key={sousEspace.id} 
-                    sousEspace={sousEspace} 
+                  <SousEspaceCard
+                    key={sousEspace.id}
+                    sousEspace={sousEspace}
                     onEdit={setSelectedSousEspace}
                     onAssign={setSelectedSousEspace}
                     onShowQR={setQrCodeData}
@@ -743,7 +743,7 @@ const GestionEspacesHierarchie = ({ navigation }: any) => {
         <Text style={styles.sousEspaceIcon}>
           {typesSousEspace.find(t => t.value === sousEspace.type)?.icon || '🛏️'}
         </Text>
-        
+
         <View style={styles.sousEspaceDetails}>
           <Text style={styles.sousEspaceNom}>
             {sousEspace.numero} {sousEspace.nom && `- ${sousEspace.nom}`}
@@ -784,20 +784,23 @@ const GestionEspacesHierarchie = ({ navigation }: any) => {
           onPress={() => onShowQR({
             valeur: sousEspace.id,
             titre: `${sousEspace.numero} - ${sousEspace.nom || ''}`
-          })}
-        >
+          })} >
+            
           <Ionicons name="qr-code" size={14} color="#FFFFFF" />
         </TouchableOpacity>
+
 
         <TouchableOpacity
           style={styles.sousEspaceActionBtn}
           onPress={() => {
             onAssign(sousEspace);
             setShowAssignModal(true);
-          }}
-        >
+          }} >
+
           <Ionicons name="person-add" size={14} color="#FFFFFF" />
+
         </TouchableOpacity>
+
 
         <TouchableOpacity
           style={[styles.sousEspaceActionBtn, { backgroundColor: '#F59E0B' }]}
@@ -867,8 +870,8 @@ const GestionEspacesHierarchie = ({ navigation }: any) => {
           </View>
 
           {/* Stats Cards */}
-          <ScrollView 
-            horizontal 
+          <ScrollView
+            horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.statsContainer}
           >
@@ -938,8 +941,8 @@ const GestionEspacesHierarchie = ({ navigation }: any) => {
       <ScrollView
         style={styles.listContainer}
         refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
+          <RefreshControl
+            refreshing={refreshing}
             onRefresh={onRefresh}
             colors={['#3B82F6']}
             tintColor="#3B82F6"
@@ -952,21 +955,26 @@ const GestionEspacesHierarchie = ({ navigation }: any) => {
             <Ionicons name="business-outline" size={64} color="#9CA3AF" />
             <Text style={styles.emptyTitle}>Aucun espace trouvé</Text>
             <Text style={styles.emptyText}>
-              {searchTerm || filterCategorie !== 'all' 
-                ? 'Aucun résultat pour votre recherche'
-                : 'Créez votre premier espace pour commencer'
+              {
+                searchTerm || filterCategorie !== 'all'
+                  ? 'Aucun résultat pour votre recherche'
+                  : 'Créez votre premier espace pour commencer'
               }
             </Text>
+
+
             <TouchableOpacity
               style={styles.emptyButton}
               onPress={() => {
                 resetEspaceForm();
                 setShowEspaceModal(true);
-              }}
-            >
+              }}   >
+
+
               <Text style={styles.emptyButtonText}>Créer un espace</Text>
             </TouchableOpacity>
           </View>
+
         ) : (
           <View style={styles.espacesList}>
             {filteredEspaces.map(espace => (
@@ -978,6 +986,9 @@ const GestionEspacesHierarchie = ({ navigation }: any) => {
 
       {/* Modals avec style amélioré */}
       {/* Les modals conservent la même structure mais avec le nouveau style */}
+
+
+
       {/* Modal Espace Parent */}
       <Modal visible={showEspaceModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
@@ -990,11 +1001,13 @@ const GestionEspacesHierarchie = ({ navigation }: any) => {
                 onPress={() => {
                   setShowEspaceModal(false);
                   resetEspaceForm();
-                }}
-              >
+                }}  >
+
+
                 <Ionicons name="close" size={24} color="#6B7280" />
               </TouchableOpacity>
             </View>
+
 
             <ScrollView style={styles.modalBody}>
               {/* Formulaire espace avec style amélioré */}
@@ -1041,12 +1054,15 @@ const GestionEspacesHierarchie = ({ navigation }: any) => {
   );
 };
 
+
+
 // Styles modernisés
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F8FAFC',
   },
+
   header: {
     padding: 24,
     paddingTop: Platform.OS === 'ios' ? 60 : 40,
@@ -1058,15 +1074,18 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
+
   headerContent: {
     marginTop: 10,
   },
+
   headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 20,
   },
+
   title: {
     fontSize: 28,
     fontWeight: 'bold',
@@ -1234,7 +1253,7 @@ const styles = StyleSheet.create({
     elevation: 8,
     overflow: 'hidden',
   },
-  
+
   espaceHeader: {
     padding: 20,
   },
