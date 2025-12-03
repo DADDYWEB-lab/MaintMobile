@@ -1,17 +1,29 @@
-
-//@ts-nocheck
 import React, { useState } from "react";
-import { View, Text, TextInput, Button, StyleSheet, Alert } from "react-native";
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  ActivityIndicator,
+  Dimensions,
+  KeyboardAvoidingView,
+  Platform,
+  StatusBar,
+} from "react-native";
 import { auth, db } from "../../firebaseConfig";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { getDocs, collection, query, where } from "firebase/firestore";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
+const { width } = Dimensions.get("window");
+
 // Définition des routes de navigation
 type RootStackParamList = {
   Login: undefined;
-  Dashboard: undefined;
+  Dashboard2: undefined;
   ChefMaintenance: undefined;
   AgentMaintenance: undefined;
   FemmeChambre: undefined;
@@ -19,21 +31,37 @@ type RootStackParamList = {
   Accueil: undefined;
 };
 
-type LoginScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
+type LoginScreenNavigationProp = NativeStackNavigationProp<
+  RootStackParamList,
+  "Login"
+>;
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [emailFocused, setEmailFocused] = useState(false);
+  const [passwordFocused, setPasswordFocused] = useState(false);
 
   const navigation = useNavigation<LoginScreenNavigationProp>();
 
   const handleSubmit = async () => {
+    // Validation
+    if (!email.trim() || !password.trim()) {
+      Alert.alert("Erreur", "Veuillez remplir tous les champs");
+      return;
+    }
+
     setLoading(true);
 
     try {
       // Connexion Firebase
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
       const user = userCredential.user;
 
       // Récupérer le rôle dans Firestore
@@ -48,7 +76,7 @@ export default function LoginPage() {
       const userRole = querySnapshot.docs[0].data().role;
 
       // Redirection selon le rôle
-      switch(userRole) {
+      switch (userRole) {
         case "admin":
           navigation.navigate("Dashboard2");
           break;
@@ -67,9 +95,20 @@ export default function LoginPage() {
         default:
           navigation.navigate("Accueil");
       }
-
     } catch (error: any) {
-      Alert.alert("Erreur", "Email ou mot de passe incorrect");
+      let errorMessage = "Email ou mot de passe incorrect";
+      
+      if (error.code === "auth/user-not-found") {
+        errorMessage = "Aucun compte trouvé avec cet email";
+      } else if (error.code === "auth/wrong-password") {
+        errorMessage = "Mot de passe incorrect";
+      } else if (error.code === "auth/invalid-email") {
+        errorMessage = "Format d'email invalide";
+      } else if (error.code === "auth/too-many-requests") {
+        errorMessage = "Trop de tentatives. Réessayez plus tard";
+      }
+
+      Alert.alert("Erreur de connexion", errorMessage);
       console.error("Erreur de connexion:", error);
     } finally {
       setLoading(false);
@@ -77,53 +116,269 @@ export default function LoginPage() {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Connexion</Text>
+    <>
+      <StatusBar barStyle="light-content" backgroundColor="#6366F1" />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.container}
+      >
+        <View style={styles.backgroundTop} />
+        <View style={styles.backgroundBottom} />
 
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        value={email}
-        onChangeText={setEmail}
-        autoCapitalize="none"
-        keyboardType="email-address"
-      />
+        <View style={styles.content}>
+          {/* Header */}
+          <View style={styles.header}>
+            <View style={styles.iconContainer}>
+              <Text style={styles.iconText}>🔐</Text>
+            </View>
+            <Text style={styles.title}>Bienvenue</Text>
+            <Text style={styles.subtitle}>
+              Connectez-vous pour continuer
+            </Text>
+          </View>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Mot de passe"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-      />
+          {/* Form */}
+          <View style={styles.formContainer}>
+            {/* Email Input */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Email</Text>
+              <View
+                style={[
+                  styles.inputWrapper,
+                  emailFocused && styles.inputWrapperFocused,
+                ]}
+              >
+                <Text style={styles.inputIcon}>📧</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="votre@email.com"
+                  placeholderTextColor="#94A3B8"
+                  value={email}
+                  onChangeText={setEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  onFocus={() => setEmailFocused(true)}
+                  onBlur={() => setEmailFocused(false)}
+                />
+              </View>
+            </View>
 
-      <Button 
-        title={loading ? "Connexion..." : "Se connecter"} 
-        onPress={handleSubmit} 
-        disabled={loading}
-      />
-    </View>
+            {/* Password Input */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Mot de passe</Text>
+              <View
+                style={[
+                  styles.inputWrapper,
+                  passwordFocused && styles.inputWrapperFocused,
+                ]}
+              >
+                <Text style={styles.inputIcon}>🔒</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="••••••••"
+                  placeholderTextColor="#94A3B8"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                  onFocus={() => setPasswordFocused(true)}
+                  onBlur={() => setPasswordFocused(false)}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                  style={styles.eyeIcon}
+                >
+                  <Text style={styles.eyeIconText}>
+                    {showPassword ? "👁️" : "👁️‍🗨️"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Forgot Password */}
+            <TouchableOpacity style={styles.forgotPassword}>
+              <Text style={styles.forgotPasswordText}>
+                Mot de passe oublié ?
+              </Text>
+            </TouchableOpacity>
+
+            {/* Login Button */}
+            <TouchableOpacity
+              style={[styles.button, loading && styles.buttonDisabled]}
+              onPress={handleSubmit}
+              disabled={loading}
+              activeOpacity={0.8}
+            >
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Text style={styles.buttonText}>Se connecter</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {/* Footer */}
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>Pas encore de compte ?</Text>
+            <TouchableOpacity>
+              <Text style={styles.footerLink}>S'inscrire</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-    backgroundColor: '#fff',
+    backgroundColor: "#F1F5F9",
+  },
+  backgroundTop: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: "40%",
+    backgroundColor: "#6366F1",
+    borderBottomLeftRadius: 40,
+    borderBottomRightRadius: 40,
+  },
+  backgroundBottom: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: "60%",
+    backgroundColor: "#F1F5F9",
+  },
+  content: {
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: 24,
+  },
+  header: {
+    alignItems: "center",
+    marginBottom: 40,
+  },
+  iconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  iconText: {
+    fontSize: 40,
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
+    fontSize: 32,
+    fontWeight: "bold",
+    color: "#FFFFFF",
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: "rgba(255, 255, 255, 0.8)",
+  },
+  formContainer: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    padding: 24,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  inputGroup: {
     marginBottom: 20,
-    textAlign: 'center',
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#334155",
+    marginBottom: 8,
+  },
+  inputWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F8FAFC",
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#E2E8F0",
+    paddingHorizontal: 16,
+  },
+  inputWrapperFocused: {
+    borderColor: "#6366F1",
+    backgroundColor: "#FFFFFF",
+  },
+  inputIcon: {
+    fontSize: 20,
+    marginRight: 12,
   },
   input: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    padding: 12,
-    marginBottom: 15,
-    borderRadius: 6,
+    flex: 1,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: "#1E293B",
+  },
+  eyeIcon: {
+    padding: 4,
+  },
+  eyeIconText: {
+    fontSize: 20,
+  },
+  forgotPassword: {
+    alignItems: "flex-end",
+    marginBottom: 24,
+  },
+  forgotPasswordText: {
+    fontSize: 14,
+    color: "#6366F1",
+    fontWeight: "600",
+  },
+  button: {
+    backgroundColor: "#6366F1",
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: "center",
+    shadowColor: "#6366F1",
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  buttonDisabled: {
+    opacity: 0.7,
+  },
+  buttonText: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#FFFFFF",
+  },
+  footer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 24,
+  },
+  footerText: {
+    fontSize: 14,
+    color: "#64748B",
+    marginRight: 4,
+  },
+  footerLink: {
+    fontSize: 14,
+    color: "#6366F1",
+    fontWeight: "600",
   },
 });

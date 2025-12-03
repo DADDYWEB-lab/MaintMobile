@@ -17,6 +17,7 @@ import Devis from "./src/Admin/Devis/Devis";
 import Chat from './src/Admin/Chat/Chat'
 import Menu from './src/Admin/Menue/Menue'
 import Dashboard2  from './src/Admin/DashboardAdmin/Dashboard2'
+import Video from './src/Video/Video'
 
 const Stack = createNativeStackNavigator();
 
@@ -26,12 +27,20 @@ export default function App() {
 
 
 
-      <Stack.Navigator
+      {/* <Stack.Navigator
         initialRouteName="Login"
+        screenOptions={{ headerShown: false }}
+      > */}
+
+
+<Stack.Navigator
+        initialRouteName="Video"
         screenOptions={{ headerShown: false }}
       >
 
-
+   <Stack.Screen name="Video" 
+        component={Video} 
+        />
 
         <Stack.Screen name="Login" 
         component={LoginScreen} 

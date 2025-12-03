@@ -257,6 +257,8 @@ const CommandeFournisseurs = ({ navigation }: any) => {
             message += `   🧮 Sous-total estimé: ${(produit.prix * produit.quantite).toFixed(2)}€\n\n`;
         });
 
+        
+
         const totalEstime = panierFournisseur.produits.reduce((sum, p) => sum + (p.prix * p.quantite), 0);
         message += `💰 TOTAL ESTIMÉ: ${totalEstime.toFixed(2)}€\n\n`;
         message += `--- CONDITIONS DEMANDÉES ---\n`;
@@ -272,6 +274,7 @@ const CommandeFournisseurs = ({ navigation }: any) => {
         message += `Cordialement,\n${devisDetails.nomContact}`;
 
         return message;
+
     };
 
     const envoyerEmail = async (fournisseur: any, message: string, sujet: string) => {
@@ -319,6 +322,8 @@ const CommandeFournisseurs = ({ navigation }: any) => {
         }
     };
 
+
+
     const creerNotification = async (fournisseurId: string, sousCommande: any, type: string = 'nouvelle_commande') => {
         try {
             await addDoc(collection(db, 'notifications'), {
@@ -333,19 +338,22 @@ const CommandeFournisseurs = ({ navigation }: any) => {
                 date: serverTimestamp()
             });
             return true;
-        } catch (error) {
+        }
+
+         catch (error) {
             console.error('Erreur création notification:', error);
             Alert.alert('Erreur', 'Erreur lors de la création de la notification.');
             return false;
         }
+
     };
-                                             
+
     const envoyerCommande = async (methodeEnvoi: string) => {
         if (Object.keys(panier).length === 0) {
             Alert.alert('Erreur', 'Le panier est vide !');
             return;
         }
-
+  
         setIsSubmitting(true);
         try {
             const panierParFournisseur = getPanierParFournisseur();
@@ -359,6 +367,8 @@ const CommandeFournisseurs = ({ navigation }: any) => {
                 methodeEnvoi: methodeEnvoi,
                 type: 'commande'
             };
+
+
             const commandeDocRef = await addDoc(collection(db, 'commandes'), commandePrincipale);
             let successCount = 0;
 
@@ -410,7 +420,8 @@ const CommandeFournisseurs = ({ navigation }: any) => {
                 }
             }
 
-            Alert.alert('Succès', `✅ ${successCount} Commandes envoyées avec succès !`);
+
+            Alert.alert('Succée', `✅ ${successCount} Commandes envoyées avec succès !`);
             setPanier({});
         } catch (error) {
             console.error('Erreur:', error);
@@ -419,13 +430,17 @@ const CommandeFournisseurs = ({ navigation }: any) => {
             setIsSubmitting(false);
         }
     };
-
+                 
+               
+                    
     const envoyerDevis = async (methodeEnvoi: string) => {
         if (Object.keys(panier).length === 0) {
             Alert.alert('Erreur', 'Le panier est vide !');
             return;
         }
-
+                       
+                       
+                        
         setIsSubmitting(true);
         try {
             const panierParFournisseur = getPanierParFournisseur();
@@ -440,9 +455,13 @@ const CommandeFournisseurs = ({ navigation }: any) => {
                 type: 'devis',
                 details: devisDetails
             };
+                 
+                 
+                  
             const devisDocRef = await addDoc(collection(db, 'commandes'), devisPrincipal);
             let successCount = 0;
 
+    
             for (const fournisseurId in panierParFournisseur) {
                 const panierFournisseur = panierParFournisseur[fournisseurId];
                 const fournisseur = panierFournisseur.fournisseur;
@@ -474,6 +493,7 @@ const CommandeFournisseurs = ({ navigation }: any) => {
                 successCount++;
                 
                 const message = genererMessageDevis(fournisseurId);
+
                 switch (methodeEnvoi) {
                     case 'email':
                         await envoyerEmail(fournisseur, message, `Demande de Devis - ${fournisseur.nomEntreprise}`);
@@ -491,6 +511,7 @@ const CommandeFournisseurs = ({ navigation }: any) => {
                         break;
                 }
             }
+
 
             Alert.alert('Succès', `✅ ${successCount} Demandes de devis envoyées avec succès !`);
             setPanier({});
@@ -685,8 +706,12 @@ const CommandeFournisseurs = ({ navigation }: any) => {
                             )}
                         </ScrollView>
                     </View>
-
-                    {/* Section Panier */}
+                                                                                                                   
+                                                    
+                                                    
+                                                       
+                                          
+ {/* Section Panier */}
                     <View style={styles.panierSection}>
                         <Text style={styles.panierTitle}>🛒 Panier de Commandes / Devis</Text>
 
@@ -738,7 +763,10 @@ const CommandeFournisseurs = ({ navigation }: any) => {
                                     </ScrollView>
                                 </View>
 
-                                {/* Total Général et Boutons d'envoi */}
+
+
+                            {/* Total Général et Boutons d'envoi */}
+
                                 <View style={{ flex: 1, justifyContent: 'flex-end' }}>
 
                                     {/* Total Général */}
@@ -747,19 +775,25 @@ const CommandeFournisseurs = ({ navigation }: any) => {
                                         <Text style={styles.totalValue}>{calculerTotal().toFixed(2)}€</Text>
                                     </View>
 
-                                    {/* Boutons d'envoi - Commandes */}
-                                    <Text style={styles.sectionSubtitle}>Commandes</Text>
+
+
+  {/* Boutons d'envoi - Commandes */}
+    <Text style={styles.sectionSubtitle}>Commandes</Text>
+
 
                                     <View style={styles.sendButtons}>
                                         <TouchableOpacity style={[styles.sendButton, { backgroundColor: COLORS.success }]} onPress={() => envoyerCommande('email')} disabled={isSubmitting}>
                                             {isSubmitting ? <ActivityIndicator color={COLORS.headerText} /> : <Text style={styles.sendButtonText}>📧 Envoyer Commande par Email</Text>}
                                         </TouchableOpacity>
+
                                         <TouchableOpacity style={[styles.sendButton, { backgroundColor: COLORS.whatsapp }]} onPress={() => envoyerCommande('whatsapp')} disabled={isSubmitting}>
                                             {isSubmitting ? <ActivityIndicator color={COLORS.headerText} /> : <Text style={styles.sendButtonText}>💚 Envoyer Commande par WhatsApp</Text>}
                                         </TouchableOpacity> 
+
                                         <TouchableOpacity style={[styles.sendButton, { backgroundColor: COLORS.warning }]} onPress={() => envoyerCommande('notification')} disabled={isSubmitting}>
                                             {isSubmitting ? <ActivityIndicator color={COLORS.headerText} /> : <Text style={styles.sendButtonText}>🔔 Notification Interne</Text>}
                                         </TouchableOpacity>
+
                                         <TouchableOpacity style={[styles.sendButton, styles.allChannelsButton]} onPress={() => envoyerCommande('tous')} disabled={isSubmitting}>
                                             {isSubmitting ? <ActivityIndicator color={COLORS.headerText} /> : <Text style={styles.sendButtonText}>🚀 Tous les Canaux</Text>}
                                         </TouchableOpacity>
@@ -775,6 +809,7 @@ const CommandeFournisseurs = ({ navigation }: any) => {
 
                                             {isSubmitting ? <ActivityIndicator color={COLORS.headerText} /> : <Text style={styles.sendButtonText}>📋 Demander un Devis</Text>}
                                         </TouchableOpacity>
+
                                         <TouchableOpacity 
                                             style={[styles.sendButton, { backgroundColor: '#6D28D9' }]} 
                                             onPress={() => Alert.alert(
