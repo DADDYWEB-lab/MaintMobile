@@ -1,14 +1,6 @@
 //@ts-nocheck
 import React, { useState, useRef, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  StatusBar,
-  Dimensions,
-  ActivityIndicator,
-} from 'react-native';
+import { View, Text,TouchableOpacity, StyleSheet,StatusBar, Dimensions, ActivityIndicator,} from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -32,10 +24,10 @@ export default function SplashVideoScreen() {
   const navigation = useNavigation<SplashVideoNavigationProp>();
 
   // Durée en secondes avant de passer à la page de connexion
-  const VIDEO_DURATION = 5; // Changez cette valeur selon vos besoins (5 secondes par défaut)
+  const VIDEO_DURATION = 8; 
 
   useEffect(() => {
-    // Afficher le bouton "Passer" après 2 secondes
+
     const skipButtonTimer = setTimeout(() => {
       setShowSkipButton(true);
     }, 2000);
@@ -43,17 +35,19 @@ export default function SplashVideoScreen() {
     // Timer pour passer automatiquement à la page de connexion
     const navigationTimer = setTimeout(() => {
       navigation.replace('Login');
-    }, VIDEO_DURATION * 1000);
+    },
+     VIDEO_DURATION * 1000
+    );
 
     return () => {
       clearTimeout(skipButtonTimer);
       clearTimeout(navigationTimer);
+      
     };
   }, [navigation]);
 
   const handleVideoEnd = () => {
-    // Cette fonction n'est plus nécessaire car on utilise le timer
-    // Mais on la garde au cas où la vidéo se termine avant le timer
+    
     navigation.replace('Login');
   };
 
@@ -71,7 +65,7 @@ export default function SplashVideoScreen() {
         ref={videoRef}
         source={require('../../assets/orbeeProVD.mp4')} 
         style={styles.video}
-        resizeMode={ResizeMode.COVER}
+        resizeMode={ResizeMode.CONTAIN}
         shouldPlay
         isLooping={true} // La vidéo boucle pendant la durée définie
         onLoad={() => setIsLoading(false)}
@@ -92,6 +86,7 @@ export default function SplashVideoScreen() {
           </View>
         )}
 
+
         {/* Bouton Passer */}
         {showSkipButton && (
           <TouchableOpacity
@@ -102,6 +97,7 @@ export default function SplashVideoScreen() {
             <Text style={styles.skipButtonText}>Passer</Text>
           </TouchableOpacity>
         )}
+
 
         {/* Footer */}
         <View style={styles.footer}>
@@ -120,16 +116,20 @@ const styles = StyleSheet.create({
     backgroundColor: '#000000',
   },
   video: {
-    width: width,
-    height: height,
-    position: 'absolute',
+  
+  width: width * 0.9,     // 90% de la largeur
+  height: height * 0.8,   // 80% de la hauteur
+  alignSelf: 'center',
+  marginTop: 50,
+  borderRadius: 20,       // Coins arrondis
+
   },
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.3)',
     justifyContent: 'space-between',
-    paddingVertical: 60,
-    paddingHorizontal: 24,
+    paddingVertical: 40,
+    paddingHorizontal: 14,
   },
   header: {
     alignItems: 'center',

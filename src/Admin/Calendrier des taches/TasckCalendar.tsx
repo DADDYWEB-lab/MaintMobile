@@ -45,6 +45,7 @@ const TaskCalendar = ({ navigation }: { navigation: any }) => {
     });
 
     const qEspaces = query(collection(db, 'espaces'), orderBy('nom'));
+    
     const unsubEspaces = onSnapshot(qEspaces, (snapshot) => {
       if (active) setEspaces(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
