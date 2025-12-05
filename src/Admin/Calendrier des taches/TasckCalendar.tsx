@@ -45,7 +45,7 @@ const TaskCalendar = ({ navigation }: { navigation: any }) => {
     });
 
     const qEspaces = query(collection(db, 'espaces'), orderBy('nom'));
-    
+
     const unsubEspaces = onSnapshot(qEspaces, (snapshot) => {
       if (active) setEspaces(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
@@ -55,13 +55,21 @@ const TaskCalendar = ({ navigation }: { navigation: any }) => {
       if (active) setSousEspaces(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
+
+    
     const qTasks = query(collection(db, 'tasks'), orderBy('createdAt', 'desc'));
+
+
     const unsubTasks = onSnapshot(qTasks, (snapshot) => {
       if (active) {
         setTasks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         setLoading(false);
       }
+
+
     });
+
+
 
     return () => {
       active = false;
@@ -70,11 +78,14 @@ const TaskCalendar = ({ navigation }: { navigation: any }) => {
       unsubSousEspaces();
       unsubTasks();
     };
-  }, []);
+  }, 
+  []);
 
   // Fonctions utilitaires
   const getStaffById = (staffId) => staff.find(s => s.id === staffId);
-  
+
+
+
   const getLocationNameById = (espaceId, sousEspaceId) => {
     if (sousEspaceId) {
       const sousEspace = sousEspaces.find(se => se.id === sousEspaceId);
@@ -83,12 +94,17 @@ const TaskCalendar = ({ navigation }: { navigation: any }) => {
         return `${espaceParent.nom} - ${sousEspace.nom || `Sous-espace ${sousEspace.numero}`}`;
       }
     }
+
+
+
     if (espaceId) {
       const espace = espaces.find(e => e.id === espaceId);
       return espace?.nom || 'Espace inconnu';
     }
     return 'Lieu non spécifié';
   };
+
+
 
   const getStatusColor = (status) => {
     switch(status) {

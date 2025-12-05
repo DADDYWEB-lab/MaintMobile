@@ -205,7 +205,7 @@ export default function FileManagerUI({ navigation }: FileManagerUIProps) {
         backgroundColor: '#FED7AA',
         iconColor: '#F97316',
         count: stats.totalTasks,
-        status: `${stats.completedTasks}/${stats.totalTasks} terminées`,
+        status: `${stats.completedTasks}/${stats.totalTasks} `,
         navigationRoute: 'TaskCalendar',
       },
       
@@ -231,6 +231,7 @@ export default function FileManagerUI({ navigation }: FileManagerUIProps) {
         status: `${stats.activeStaff} actifs`,
         navigationRoute: 'Personnel',
       },
+      
       {
         id: 'statistics',
         name: 'Statistiques',
@@ -239,9 +240,10 @@ export default function FileManagerUI({ navigation }: FileManagerUIProps) {
         backgroundColor: '#A5F3FC',
         iconColor: '#06B6D4',
         count: Math.round((stats.completedTasks / Math.max(stats.totalTasks, 1)) * 100),
-        status: '% performance',
+        status: '% ',
         navigationRoute: 'Statistics',
       },
+
       {
         id: 'fournisseurs',
         name: 'Fournisseurs',
@@ -335,7 +337,7 @@ export default function FileManagerUI({ navigation }: FileManagerUIProps) {
   if (loading) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
-        <StatusBar barStyle="light-content" backgroundColor="#1E293B" />
+        <StatusBar barStyle="light-content" backgroundColor="#1e3b23ff" />
         <ActivityIndicator size="large" color="#3B82F6" />
         <Text style={styles.loadingText}>Chargement des données...</Text>
       </SafeAreaView>
@@ -345,161 +347,158 @@ export default function FileManagerUI({ navigation }: FileManagerUIProps) {
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor="#1E293B" />
-      <View style={styles.container}>
-        <View style={styles.phoneContainer}>
-          {/* Phone Shadow */}
-          <View style={styles.phoneShadow} />
+      
+      {/* Container principal sans effet téléphone */}
+      <View style={styles.mainContainer}>
+        {/* Top Dark Section */}
+        <View style={styles.topSection}>
+          {/* Header Icons */}
+          <View style={styles.headerIcons}>
+            <TouchableOpacity
+              style={styles.iconButton}
+              accessibilityLabel="Statistiques"
+              accessibilityRole="button"
+              onPress={() => navigation.navigate('Statistics')}
+            >
+              <AlertTriangle size={20} color="#FFFFFF" />
+            </TouchableOpacity>
 
-          {/* Phone Body */}
-          <View style={styles.phoneBody}>
-            {/* Top Dark Section */}
-            <View style={styles.topSection}>
-              {/* Header Icons */}
-              <View style={styles.headerIcons}>
-                <TouchableOpacity
-                  style={styles.iconButton}
-                  accessibilityLabel="Statistiques"
-                  accessibilityRole="button"
-                  onPress={() => navigation.navigate('Statistics')}
-                >
-                  <Cloud size={20} color="#FFFFFF" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.iconButton, styles.userButton]}
-                  accessibilityLabel="Profil utilisateur"
-                  accessibilityRole="button"
-                  onPress={() => navigation.navigate('Personnel')}
-                >
-                  <User size={20} color="#FFFFFF" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.iconButton}
-                  accessibilityLabel="Menu"
-                  accessibilityRole="button"
-                  onPress={() => navigation.navigate('Parametres')}
-                >
-                  <Menu size={20} color="#FFFFFF" />
-                </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[styles.iconButton, styles.userButton]}
+              accessibilityLabel="Profil utilisateur"
+              accessibilityRole="button"
+              onPress={() => navigation.navigate('Personnel')}
+            >
+              <Clock size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.iconButton}
+              accessibilityLabel="Menu"
+              accessibilityRole="button"
+              onPress={() => navigation.navigate('Parametres')}  >
+
+              <Menu size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Search Bar */}
+          <View style={styles.searchContainer}>
+           
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Rechercher..."
+              placeholderTextColor="#94A3B8"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              accessibilityLabel="Rechercher dans l'application"
+              accessibilityRole="search"
+            />
+            <View style={styles.searchIcon}>
+              <Search size={16} color="#94A3B8" />
+            </View>
+          </View>
+
+          {/* Stats Card */}
+          <View style={styles.myDocsCard}>
+            <View style={styles.myDocsHeader}>
+              <View style={styles.myDocsIcon}>
+                <Folder size={24} color="#FFFFFF" />
               </View>
-
-              {/* Search Bar */}
-              <View style={styles.searchContainer}>
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder="Rechercher..."
-                  placeholderTextColor="#94A3B8"
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  accessibilityLabel="Rechercher dans l'application"
-                  accessibilityRole="search"
-                />
-                <View style={styles.searchIcon}>
-                  <Search size={16} color="#94A3B8" />
-                </View>
+              <View style={styles.myDocsInfo}>
+                <Text style={styles.myDocsTitle}>Tableau de Bord</Text>
+                <Text style={styles.myDocsSubtitle}>
+                  {stats.totalTasks} tâches, {stats.totalReclamations} réclamations
+                </Text>
               </View>
-
-              {/* Stats Card */}
-              <View style={styles.myDocsCard}>
-                <View style={styles.myDocsHeader}>
-                  <View style={styles.myDocsIcon}>
-                    <Folder size={24} color="#FFFFFF" />
-                  </View>
-                  <View style={styles.myDocsInfo}>
-                    <Text style={styles.myDocsTitle}>Tableau de Bord</Text>
-                    <Text style={styles.myDocsSubtitle}>
-                      {stats.totalTasks} tâches, {stats.totalReclamations} réclamations
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.moreButton}
-                    accessibilityLabel="Rafraîchir"
-                    accessibilityRole="button"
-                    onPress={() => setLoading(true)}
-                  >
-                    <Text style={styles.moreButtonText}>↻</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* Progress Bar */}
-                <View style={styles.progressContainer}>
-                  <View style={styles.progressBar}>
-                    <View style={[
-                      styles.progressFill,
-                      { width: `${Math.round((stats.completedTasks / Math.max(stats.totalTasks, 1)) * 100)}%` }
-                    ]} />
-                  </View>
-                  <View style={styles.storageInfo}>
-                    <Text style={styles.storageText}>
-                      {Math.round((stats.completedTasks / Math.max(stats.totalTasks, 1)) * 100)}% complétion
-                    </Text>
-                  </View>
-                </View>
-              </View>
+              <TouchableOpacity
+                style={styles.moreButton}
+                accessibilityLabel="Rafraîchir"
+                accessibilityRole="button"
+                onPress={() => setLoading(true)}
+              >
+                <Text style={styles.moreButtonText}>↻</Text>
+              </TouchableOpacity>
             </View>
 
-            {/* Bottom Light Section */}
-            <ScrollView
-              style={styles.bottomSection}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.scrollContent}
-            >
-              {/* Data Grid */}
-              <View style={styles.filesGrid}>
-                {filteredItems.map((item, index) => renderDataCard(item, index))}
+            {/* Progress Bar */}
+            <View style={styles.progressContainer}>
+              <View style={styles.progressBar}>
+                <View style={[
+                  styles.progressFill,
+                  { width: `${Math.round((stats.completedTasks / Math.max(stats.totalTasks, 1)) * 100)}%` }
+                ]} />
               </View>
-
-              {/* Quick Stats */}
-              <View style={styles.quickStatsContainer}>
-                <View style={styles.quickStat}>
-                  <Text style={styles.quickStatValue}>{stats.completedTasks}</Text>
-                  <Text style={styles.quickStatLabel}>Terminées</Text>
-                </View>
-                <View style={styles.quickStat}>
-                  <Text style={styles.quickStatValue}>{stats.inProgressTasks}</Text>
-                  <Text style={styles.quickStatLabel}>En cours</Text>
-                </View>
-                <View style={styles.quickStat}>
-                  <Text style={styles.quickStatValue}>{stats.urgentReclamations}</Text>
-                  <Text style={styles.quickStatLabel}>Urgentes</Text>
-                </View>
-              </View>
-            </ScrollView>
-
-            {/* Bottom Navigation */}
-            <View style={styles.bottomNav}>
-              <View style={styles.navBar}>
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  accessibilityLabel="Accueil"
-                  accessibilityRole="button"
-                  onPress={() => navigation.navigate('Dashboard')}
-                >
-                  <View style={styles.navButtonActive}>
-                    <Home size={20} color="#FFFFFF" />
-                  </View>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.navButton}
-                  activeOpacity={0.7}
-                  accessibilityLabel="Activité récente"
-                  accessibilityRole="button"
-                  onPress={() => navigation.navigate('Tasks')}
-                >
-                  <Clock size={20} color="#94A3B8" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.navButton}
-                  activeOpacity={0.7}
-                  accessibilityLabel="Notifications"
-                  accessibilityRole="button"
-                  onPress={() => navigation.navigate('Reclamations')}
-                >
-                  <AlertTriangle size={20} color="#94A3B8" />
-                </TouchableOpacity>
+              <View style={styles.storageInfo}>
+                <Text style={styles.storageText}>
+                  {Math.round((stats.completedTasks / Math.max(stats.totalTasks, 1)) * 100)}% complétion
+                </Text>
               </View>
             </View>
           </View>
         </View>
+
+        {/* Bottom Light Section */}
+        <ScrollView
+          style={styles.bottomSection}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          {/* Data Grid */}
+          <View style={styles.filesGrid}>
+            {filteredItems.map((item, index) => renderDataCard(item, index))}
+          </View>
+
+          {/* Quick Stats */}
+          {/* <View style={styles.quickStatsContainer}>
+            <View style={styles.quickStat}>
+              <Text style={styles.quickStatValue}>{stats.completedTasks}</Text>
+              <Text style={styles.quickStatLabel}>Terminées</Text>
+            </View>
+            <View style={styles.quickStat}>
+              <Text style={styles.quickStatValue}>{stats.inProgressTasks}</Text>
+              <Text style={styles.quickStatLabel}>En cours</Text>
+            </View>
+            <View style={styles.quickStat}>
+              <Text style={styles.quickStatValue}>{stats.urgentReclamations}</Text>
+              <Text style={styles.quickStatLabel}>Urgentes</Text>
+            </View>
+          </View> */}
+        </ScrollView>
+
+        {/* Bottom Navigation */}
+        {/* <View style={styles.bottomNav}>
+          <View style={styles.navBar}>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              accessibilityLabel="Accueil"
+              accessibilityRole="button"
+              onPress={() => navigation.navigate('Dashboard')}
+            >
+              <View style={styles.navButtonActive}>
+                <Home size={20} color="#FFFFFF" />
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.navButton}
+              activeOpacity={0.7}
+              accessibilityLabel="Activité récente"
+              accessibilityRole="button"
+              onPress={() => navigation.navigate('Tasks')}
+            >
+              <Clock size={20} color="#94A3B8" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.navButton}
+              activeOpacity={0.7}
+              accessibilityLabel="Notifications"
+              accessibilityRole="button"
+              onPress={() => navigation.navigate('Reclamations')}
+            >
+              <AlertTriangle size={20} color="#94A3B8" />
+            </TouchableOpacity>
+          </View>
+        </View> */}
       </View>
     </SafeAreaView>
   );
@@ -510,53 +509,21 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#1E293B',
   },
-  container: {
+
+  // Container principal simplifié
+  mainContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    backgroundColor: '#E2E8F0',
-  },
-  phoneContainer: {
-    width: width * 0.99,
-    maxWidth: width,
-    height: height * 0.99,
-    maxHeight: height,
-    position: 'relative',
-  },
-  phoneShadow: {
-    position: 'absolute',
-    top: 10,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(100, 116, 139, 0.3)',
-    borderRadius: 40,
-    transform: [{ translateY: 4 }],
-  },
-  phoneBody: {
-    flex: 1,
-    borderRadius: 40,
-    overflow: 'hidden',
-    borderWidth: 6,
-    borderColor: '#FFFFFF',
     backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 10,
-    },
-    shadowOpacity: 0.2,
-    shadowRadius: 20,
-    elevation: 15,
+    overflow: 'hidden',
   },
+
+  // Top section reste identique
   topSection: {
     paddingHorizontal: 24,
     paddingTop: 50,
     paddingBottom: 128,
-    borderBottomLeftRadius: 40,
-    borderBottomRightRadius: 40,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
     backgroundColor: '#1E293B',
     shadowColor: '#000',
     shadowOffset: {
@@ -567,6 +534,15 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 10,
   },
+  
+  // Bottom section reste identique
+  bottomSection: {
+    marginTop: -80,
+    paddingHorizontal: 24,
+    flex: 1,
+  },
+  
+  // Tous les autres styles restent identiques
   headerIcons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -574,6 +550,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     marginTop: 10,
   },
+  
   iconButton: {
     width: 40,
     height: 40,
@@ -582,13 +559,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  
   userButton: {
     borderRadius: 20,
   },
+  
   searchContainer: {
     marginBottom: 24,
     position: 'relative',
   },
+  
   searchInput: {
     backgroundColor: 'rgba(15, 23, 42, 0.4)',
     borderRadius: 12,
@@ -599,12 +579,14 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     paddingRight: 40,
   },
+  
   searchIcon: {
     position: 'absolute',
     right: 16,
     top: 14,
     pointerEvents: 'none',
   },
+  
   myDocsCard: {
     backgroundColor: 'rgba(51, 65, 85, 0.4)',
     borderRadius: 24,
@@ -612,11 +594,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.1)',
   },
+  
   myDocsHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 16,
   },
+  
   myDocsIcon: {
     width: 48,
     height: 48,
@@ -625,21 +609,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#A855F7',
   },
+  
   myDocsInfo: {
     flex: 1,
     marginLeft: 12,
   },
+  
   myDocsTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#FFFFFF',
     marginBottom: 2,
   },
+  
   myDocsSubtitle: {
     fontSize: 12,
     color: '#94A3B8',
     fontWeight: '400',
   },
+  
   moreButton: {
     width: 32,
     height: 32,
@@ -648,13 +636,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  
   moreButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
   },
+  
   progressContainer: {
     marginTop: 6,
   },
+  
   progressBar: {
     height: 6,
     backgroundColor: 'rgba(15, 23, 42, 0.3)',
@@ -662,36 +653,38 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginBottom: 6,
   },
+  
   progressFill: {
     height: '100%',
     backgroundColor: '#3B82F6',
   },
+  
   storageInfo: {
     alignItems: 'flex-end',
   },
+  
   storageText: {
     fontSize: 12,
     color: '#94A3B8',
     fontWeight: '400',
   },
-  bottomSection: {
-    marginTop: -80,
-    paddingHorizontal: 24,
-    flex: 1,
-  },
+  
   scrollContent: {
     paddingBottom: 120,
   },
+  
   filesGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     marginBottom: 20,
   },
+  
   fileCard: {
     width: '31%',
     marginBottom: 12,
   },
+  
   fileCardContainer: {
     borderRadius: 24,
     padding: 16,
@@ -705,6 +698,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
+  
   fileIconContainer: {
     width: 56,
     height: 56,
@@ -714,6 +708,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
   },
+  
   fileName: {
     fontSize: 14,
     fontWeight: '600',
@@ -721,6 +716,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 2,
   },
+  
   fileCount: {
     fontSize: 24,
     fontWeight: 'bold',
@@ -728,12 +724,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginVertical: 4,
   },
+  
   fileType: {
     fontSize: 10,
     color: '#64748B',
     textAlign: 'center',
     fontWeight: '400',
   },
+  
   quickStatsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
@@ -742,26 +740,31 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 20,
   },
+  
   quickStat: {
     alignItems: 'center',
   },
+  
   quickStatValue: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#1E293B',
     marginBottom: 4,
   },
+  
   quickStatLabel: {
     fontSize: 12,
     color: '#64748B',
     fontWeight: '500',
   },
+  
   bottomNav: {
     position: 'absolute',
     bottom: 20,
     left: 24,
     right: 24,
   },
+  
   navBar: {
     backgroundColor: 'rgba(255, 255, 255, 0.7)',
     borderRadius: 24,
@@ -779,26 +782,34 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 6,
   },
+  
   navButtonActive: {
     padding: 8,
     borderRadius: 12,
     backgroundColor: '#6366F1',
   },
+  
   navButton: {
     padding: 8,
     borderRadius: 12,
-  }
-  ,
-
+  },
+  
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#F3F4F6',
   },
+  
   loadingText: {
     marginTop: 16,
     fontSize: 16,
     color: '#6B7280',
   },
 });
+
+
+
+
+
+

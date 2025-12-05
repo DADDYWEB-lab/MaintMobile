@@ -1,7 +1,7 @@
 //@ts-nocheck
-import React, { useState, useRef, useEffect } from 'react';
-import { View, Text,TouchableOpacity, StyleSheet,StatusBar, Dimensions, ActivityIndicator,} from 'react-native';
-import { Video, ResizeMode } from 'expo-av';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, StatusBar, ActivityIndicator, Dimensions } from 'react-native';
+import YoutubePlayer from 'react-native-youtube-iframe';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
@@ -13,80 +13,75 @@ type RootStackParamList = {
 };
 
 type SplashVideoNavigationProp = NativeStackNavigationProp<
-  RootStackParamList,
-  'SplashVideo'
+  RootStackParamList,'SplashVideo'
 >;
 
 export default function SplashVideoScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [showSkipButton, setShowSkipButton] = useState(false);
-  const videoRef = useRef<Video>(null);
+  const [playing, setPlaying] = useState(true);
   const navigation = useNavigation<SplashVideoNavigationProp>();
 
-  // Durée en secondes avant de passer à la page de connexion
-  const VIDEO_DURATION = 8; 
+  // ID de votre vidéo YouTube
+  const YOUTUBE_VIDEO_ID = 'vC9a5w7Ve5Q';
+
+  const VIDEO_DURATION = 18;
 
   useEffect(() => {
-
     const skipButtonTimer = setTimeout(() => {
       setShowSkipButton(true);
     }, 2000);
 
-    // Timer pour passer automatiquement à la page de connexion
     const navigationTimer = setTimeout(() => {
       navigation.replace('Login');
-    },
-     VIDEO_DURATION * 1000
-    );
+    }, VIDEO_DURATION * 1000);
 
     return () => {
       clearTimeout(skipButtonTimer);
       clearTimeout(navigationTimer);
-      
     };
   }, [navigation]);
 
-  const handleVideoEnd = () => {
-    
+  const handleSkip = () => {
+    setPlaying(false);
     navigation.replace('Login');
   };
 
-  const handleSkip = () => {
-    // Passer la vidéo et aller directement à la connexion
-    navigation.replace('Login');
+  const onStateChange = (state: string) => {
+    if (state === 'ended') {
+      navigation.replace('Login');
+    }
   };
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
 
-      {/* Vidéo en plein écran */}
-      <Video
-        ref={videoRef}
-        source={require('../../assets/orbeeProVD.mp4')} 
-        style={styles.video}
-        resizeMode={ResizeMode.CONTAIN}
-        shouldPlay
-        isLooping={true} // La vidéo boucle pendant la durée définie
-        onLoad={() => setIsLoading(false)}
+      {/* YouTube Player */}
+      <YoutubePlayer
+        height={height}
+        width={width}
+        play={playing}
+        videoId={YOUTUBE_VIDEO_ID}
+        onChangeState={onStateChange}
+        onReady={() => setIsLoading(false)}
+        webViewProps={{
+          injectedJavaScript: `
+            var element = document.getElementsByClassName('container')[0];
+            element.style.position = 'unset';
+            true;
+          `,
+        }}
+        initialPlayerParams={{
+          controls: false,
+          modestbranding: true,
+          rel: false,
+          showinfo: false,
+        }}
       />
 
-      {/* Overlay avec gradient */}
-      <View style={styles.overlay}>
-        {/* Logo ou Titre */}
-        <View style={styles.header}>
-        
-        </View>
-
-        {/* Loader pendant le chargement */}
-        {isLoading && (
-          <View style={styles.loaderContainer}>
-            <ActivityIndicator size="large" color="#FFFFFF" />
-            <Text style={styles.loadingText}>Chargement...</Text>
-          </View>
-        )}
-
-
+      {/* Overlay pour les contrôles */}
+      <View style={styles.controlsOverlay}>
         {/* Bouton Passer */}
         {showSkipButton && (
           <TouchableOpacity
@@ -96,15 +91,16 @@ export default function SplashVideoScreen() {
           >
             <Text style={styles.skipButtonText}>Passer</Text>
           </TouchableOpacity>
-        )}
+     
+     )}
 
-
-        {/* Footer */}
-        <View style={styles.footer}>
-          <View style={styles.progressBar}>
-            <View style={styles.progressFill} />
+        {/* Loader pendant le chargement */}
+        {isLoading && (
+          <View style={styles.loaderOverlay}>
+            <ActivityIndicator size="large" color="#FFFFFF" />
+            <Text style={styles.loadingText}>Chargement...</Text>
           </View>
-        </View>
+        )}
       </View>
     </View>
   );
@@ -114,91 +110,49 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000000',
-  },
-  video: {
-  
-  width: width * 0.9,     // 90% de la largeur
-  height: height * 0.8,   // 80% de la hauteur
-  alignSelf: 'center',
-  marginTop: 50,
-  borderRadius: 20,       // Coins arrondis
-
-  },
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-    justifyContent: 'space-between',
-    paddingVertical: 40,
-    paddingHorizontal: 14,
-  },
-  header: {
-    alignItems: 'center',
-    marginTop: 40,
-  },
-  logoText: {
-    fontSize: 80,
-    marginBottom: 16,
-  },
-  title: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 8,
-    textAlign: 'center',
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.9)',
-    textAlign: 'center',
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-  },
-  loaderContainer: {
-    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  loadingText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    marginTop: 16,
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
+  controlsOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'space-between',
+    paddingTop: StatusBar.currentHeight ? StatusBar.currentHeight + 20 : 50,
+    paddingBottom: 40,
+    paddingHorizontal: 20,
   },
   skipButton: {
-    position: 'absolute',
-    top: 60,
-    right: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignSelf: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.3)',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   skipButtonText: {
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
+    letterSpacing: 0.5,
   },
-  footer: {
+  loaderOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
   },
-  progressBar: {
-    width: '60%',
-    height: 3,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    width: '40%',
-    backgroundColor: '#FFFFFF',
+  loadingText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    marginTop: 16,
+    fontWeight: '500',
   },
 });

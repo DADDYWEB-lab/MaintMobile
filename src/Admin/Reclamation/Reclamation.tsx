@@ -431,7 +431,7 @@ const AdminReclamations = ({ navigation }: any) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F3F4F6' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, backgroundColor: '#463fabff', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
   title: { fontSize: 24, fontWeight: 'bold', color: '#1F2937' },
   subtitle: { fontSize: 14, color: '#6B7280' },
   addButton: { backgroundColor: '#667eea', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 },

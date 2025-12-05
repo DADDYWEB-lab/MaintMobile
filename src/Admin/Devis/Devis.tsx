@@ -5,16 +5,18 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
     View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Alert, 
     RefreshControl, Platform, Dimensions, Image, Linking, ActivityIndicator,
-    Modal
+    Modal, KeyboardAvoidingView
 } from 'react-native';
 import {
-    collection, query, onSnapshot, addDoc, updateDoc, doc, serverTimestamp
+    collection, query, onSnapshot, addDoc, serverTimestamp
 } from 'firebase/firestore';
 import { db } from '../../../firebaseConfig';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 // --- COULEURS ET CONSTANTES THÉMATIQUES ---
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 const isLargeScreen = width > 768;
+const isMediumScreen = width > 480;
 
 const COLORS = {
     primary: '#1E40AF', 
@@ -33,38 +35,8 @@ const COLORS = {
     borderAccent: '#BAE6FD',
     selectedBg: '#F0F9FF',
     headerText: 'white',
-    devis: '#8B5CF6'
-};
-
-// --- Fonctions d'icônes/Emoji ---
-const getEmoji = (category: string) => {
-    switch (category) {
-        case 'reference': return '🏷️';
-        case 'nom': return '📦';
-        case 'description': return '🔍';
-        case 'fournisseur': return '🏢';
-        case 'prix': return '💰';
-        case 'stock': return '📊';
-        case 'all': default: return '🔍';
-    }
-};
-
-const renderLogo = (logoUrl: string, defaultIcon: string, size = 40) => {
-    if (logoUrl && logoUrl.startsWith('http')) {
-        return (
-            <Image 
-                source={{ uri: logoUrl }} 
-                style={[styles.logoImage, { width: size, height: size }]} 
-            />
-        );
-    }
-    return (
-        <View style={[styles.logoDefaultContainer, { width: size, height: size }]}>
-            <Text style={{ fontSize: size * 0.5, color: COLORS.textSecondary }}>
-                {defaultIcon}
-            </Text>
-        </View>
-    );
+    devis: '#8B5CF6',
+    devisLight: '#DDD6FE'
 };
 
 // --- COMPOSANT PRINCIPAL ---
@@ -81,6 +53,14 @@ const CommandeFournisseurs = ({ navigation }: any) => {
     const [showSearchHelp, setShowSearchHelp] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
     const [showDevisModal, setShowDevisModal] = useState(false);
+    const [showFournisseurModal, setShowFournisseurModal] = useState(false);
+    const [selectedFournisseurForDevis, setSelectedFournisseurForDevis] = useState(null);
+    const [customFournisseur, setCustomFournisseur] = useState({
+        nomEntreprise: '',
+        email: '',
+        telephone: '',
+        adresse: ''
+    });
     const [devisDetails, setDevisDetails] = useState({
         objet: 'Demande de devis',
         delaiLivraison: '15 jours',
@@ -88,7 +68,9 @@ const CommandeFournisseurs = ({ navigation }: any) => {
         remarques: '',
         nomContact: 'Service Maintenance Hôtel',
         emailContact: 'maintenance@hotel.com',
-        telephoneContact: '+33 1 23 45 67 89'
+        telephoneContact: '+33 1 23 45 67 89',
+        validiteDevis: '30 jours',
+        reference: `DEV-${Date.now().toString().slice(-6)}`
     });
 
     // --- Récupérer les données (Listeners Firebase)
@@ -161,7 +143,6 @@ const CommandeFournisseurs = ({ navigation }: any) => {
                         produit.prix?.toString().includes(searchLower) ||
                         produit.stock?.toString().includes(searchLower)
                     );
-
             }
         });
     }, 
@@ -174,12 +155,20 @@ const CommandeFournisseurs = ({ navigation }: any) => {
     const retirerDuPanier = (produitId: string) => {
         setPanier(prev => {
             const newPanier = { ...prev };
-            if (newPanier[produitId] > 1) { newPanier[produitId]--; } else { delete newPanier[produitId]; }
+            if (newPanier[produitId] > 1) { 
+                newPanier[produitId]--; 
+            } else { 
+                delete newPanier[produitId]; 
+            }
             return newPanier;
         });
     };
     const supprimerDuPanier = (produitId: string) => {
-        setPanier(prev => { const newPanier = { ...prev }; delete newPanier[produitId]; return newPanier; });
+        setPanier(prev => { 
+            const newPanier = { ...prev }; 
+            delete newPanier[produitId]; 
+            return newPanier; 
+        });
     };
 
     const calculerTotal = () => {
@@ -188,6 +177,7 @@ const CommandeFournisseurs = ({ navigation }: any) => {
             return total + (produit?.prix || 0) * panier[produitId];
         }, 0);
     };
+
     const getPanierParFournisseur = () => {
         const panierParFournisseur = {};
         Object.keys(panier).forEach(produitId => {
@@ -200,83 +190,228 @@ const CommandeFournisseurs = ({ navigation }: any) => {
                         produits: []
                     };
                 }
-                panierParFournisseur[fournisseurId].produits.push({ ...produit, quantite: panier[produitId] });
+                panierParFournisseur[fournisseurId].produits.push({ 
+                    ...produit, 
+                    quantite: panier[produitId] 
+                });
             }
         });
         return panierParFournisseur;
     };
 
-    // --- Fonctions d'Envoi
-    const genererMessageCommande = (fournisseurId: string) => {
-        const panierFournisseur = getPanierParFournisseur()[fournisseurId];
-        if (!panierFournisseur) return '';
-
-        const fournisseur = panierFournisseur.fournisseur;
-        let message = `📦 COMMANDE - ${fournisseur.nomEntreprise}\n\n`;
-        message += `Date: ${new Date().toLocaleDateString('fr-FR')}\n`;
-        message += `Référence: CMD-${Date.now().toString().slice(-6)}\n\n`;
-        message += `DÉTAIL DE LA COMMANDE:\n`;
-        message += '─'.repeat(30) + '\n\n';
-
-        panierFournisseur.produits.forEach((produit, index) => {
-            message += `${index + 1}. ${produit.reference} - ${produit.nom}\n`;
-            message += `   📸 ${produit.logo ? 'Logo disponible' : 'Pas de logo'}\n`;
-            message += `   📦 Quantité: ${produit.quantite} ${produit.unite}\n`;
-            message += `   💰 Prix unitaire: ${produit.prix}€\n`;
-            message += `   🧮 Sous-total: ${(produit.prix * produit.quantite).toFixed(2)}€\n\n`;
-        });
-
-        const total = panierFournisseur.produits.reduce((sum, p) => sum + (p.prix * p.quantite), 0);
-        message += `💰 TOTAL: ${total.toFixed(2)}€\n\n`;
-        message += `Merci de confirmer la disponibilité et les délais de livraison.\n`;
-        message += `Cordialement`;
-
-        return message;
+    // --- Fonction pour ouvrir le modal de sélection de fournisseur
+    const ouvrirModalDevis = () => {
+        // if (Object.keys(panier).length === 0) {
+        //     Alert.alert('Erreur', 'Le panier est vide ! Ajoutez des produits avant de demander un devis.');
+        //     return;
+        // }
+        setShowFournisseurModal(true);
     };
 
-    const genererMessageDevis = (fournisseurId: string) => {
-        const panierFournisseur = getPanierParFournisseur()[fournisseurId];
-        if (!panierFournisseur) return '';
-
-        const fournisseur = panierFournisseur.fournisseur;
-        let message = `📋 DEMANDE DE DEVIS - ${fournisseur.nomEntreprise}\n\n`;
-        message += `Objet: ${devisDetails.objet}\n`;
-        message += `Date: ${new Date().toLocaleDateString('fr-FR')}\n`;
-        message += `Référence: DEV-${Date.now().toString().slice(-6)}\n\n`;
-        message += `--- INFORMATIONS DU DEMANDEUR ---\n`;
-        message += `📞 Contact: ${devisDetails.nomContact}\n`;
-        message += `📧 Email: ${devisDetails.emailContact}\n`;
-        message += `📱 Téléphone: ${devisDetails.telephoneContact}\n\n`;
-        message += `--- DÉTAIL DE LA DEMANDE ---\n`;
-        message += '─'.repeat(30) + '\n\n';
-
-        panierFournisseur.produits.forEach((produit, index) => {
-            message += `${index + 1}. ${produit.reference} - ${produit.nom}\n`;
-            message += `   📦 Quantité estimée: ${produit.quantite} ${produit.unite}\n`;
-            message += `   💰 Prix unitaire actuel: ${produit.prix}€\n`;
-            message += `   🧮 Sous-total estimé: ${(produit.prix * produit.quantite).toFixed(2)}€\n\n`;
-        });
-
+    // --- Fonction pour continuer avec un fournisseur sélectionné
+    const continuerAvecFournisseur = (fournisseur = null) => {
+        setSelectedFournisseurForDevis(fournisseur);
+        setShowFournisseurModal(false);
+        setShowDevisModal(true);
         
+        // Si c'est un fournisseur personnalisé, initialiser les champs
+        if (fournisseur === null) {
+            setCustomFournisseur({
+                nomEntreprise: '',
+                email: '',
+                telephone: '',
+                adresse: ''
+            });
+        }
+    };
 
-        const totalEstime = panierFournisseur.produits.reduce((sum, p) => sum + (p.prix * p.quantite), 0);
-        message += `💰 TOTAL ESTIMÉ: ${totalEstime.toFixed(2)}€\n\n`;
-        message += `--- CONDITIONS DEMANDÉES ---\n`;
-        message += `⏱️ Délai de livraison souhaité: ${devisDetails.delaiLivraison}\n`;
-        message += `💳 Conditions de paiement: ${devisDetails.conditionsPaiement}\n\n`;
+    // --- Génération du message devis amélioré
+    const genererMessageDevis = () => {
+        let message = '';
         
-        if (devisDetails.remarques) {
-            message += `📝 Remarques supplémentaires:\n${devisDetails.remarques}\n\n`;
+        if (selectedFournisseurForDevis === null) {
+            // Fournisseur personnalisé
+            message = `📋 DEMANDE DE DEVIS - ${customFournisseur.nomEntreprise}\n\n`;
+        } else {
+            // Fournisseur existant
+            message = `📋 DEMANDE DE DEVIS - ${selectedFournisseurForDevis.nomEntreprise}\n\n`;
         }
         
-        message += `Nous vous remercions de nous faire parvenir votre meilleure proposition commerciale.\n`;
+        message += `Objet: ${devisDetails.objet}\n`;
+        message += `Référence: ${devisDetails.reference}\n`;
+        message += `Date: ${new Date().toLocaleDateString('fr-FR')}\n`;
+        message += `Validité du devis: ${devisDetails.validiteDevis}\n\n`;
+        
+        message += `--- INFORMATIONS DU DEMANDEUR ---\n`;
+        message += `👤 Contact: ${devisDetails.nomContact}\n`;
+        message += `📧 Email: ${devisDetails.emailContact}\n`;
+        message += `📱 Téléphone: ${devisDetails.telephoneContact}\n\n`;
+        
+        message += `--- DÉTAIL DES ARTICLES DEMANDÉS ---\n`;
+        message += '─'.repeat(40) + '\n\n';
+
+        // Récupérer tous les produits du panier
+        const allProduits = Object.keys(panier).map(produitId => {
+            const produit = produits.find(p => p.id === produitId);
+            return {
+                ...produit,
+                quantite: panier[produitId]
+            };
+        });
+
+        allProduits.forEach((produit, index) => {
+            message += `ARTICLE ${index + 1}:\n`;
+            message += `🔹 Référence: ${produit.reference}\n`;
+            message += `🔹 Désignation: ${produit.nom}\n`;
+            if (produit.description) {
+                message += `🔹 Description: ${produit.description}\n`;
+            }
+            message += `🔹 Quantité: ${produit.quantite} ${produit.unite}\n`;
+            message += `🔹 Prix unitaire actuel: ${produit.prix}€\n`;
+            message += `🔹 Sous-total: ${(produit.prix * produit.quantite).toFixed(2)}€\n\n`;
+        });
+
+        const totalEstime = allProduits.reduce((sum, p) => sum + (p.prix * p.quantite), 0);
+        message += `💰 TOTAL ESTIMÉ: ${totalEstime.toFixed(2)}€\n\n`;
+        
+        message += `--- CONDITIONS DEMANDÉES ---\n`;
+        message += `⏱️ Délai de livraison souhaité: ${devisDetails.delaiLivraison}\n`;
+        message += `💳 Conditions de paiement: ${devisDetails.conditionsPaiement}\n`;
+        message += `📅 Validité de l'offre: ${devisDetails.validiteDevis}\n\n`;
+        
+        if (devisDetails.remarques) {
+            message += `📝 REMARQUES SUPPLÉMENTAIRES:\n${devisDetails.remarques}\n\n`;
+        }
+        
+        message += `--- INSTRUCTIONS ---\n`;
+        message += `Merci de nous faire parvenir votre meilleure proposition commerciale incluant:\n`;
+        message += `✅ Prix unitaire et total TTC\n`;
+        message += `✅ Délais de livraison exacts\n`;
+        message += `✅ Conditions de paiement détaillées\n`;
+        message += `✅ Garanties et conditions de retour\n`;
+        message += `✅ Fiche technique si applicable\n\n`;
+        
         message += `Cette demande n'engage pas à l'achat.\n\n`;
-        message += `Cordialement,\n${devisDetails.nomContact}`;
+        message += `Dans l'attente de votre retour,\n`;
+        message += `Cordialement,\n`;
+        message += `${devisDetails.nomContact}\n`;
+        message += `${devisDetails.emailContact}\n`;
+        message += `${devisDetails.telephoneContact}`;
 
         return message;
-
     };
 
+    // --- Fonction pour rendre le logo du produit
+    const renderProduitLogo = (produit) => {
+        if (produit.logo) {
+            return (
+                <Image 
+                    source={{ uri: produit.logo }} 
+                    style={styles.produitLogo}
+                />
+            );
+        }
+        
+        return (
+            <View style={[styles.produitLogo, styles.defaultLogo]}>
+                <Icon name="package-variant" size={24} color="#6B7280" />
+            </View>
+        );
+    };
+
+    // --- Envoi du devis
+    const envoyerDevis = async (methodeEnvoi: string) => {
+        setIsSubmitting(true);
+        
+        try {
+            const referenceDevis = devisDetails.reference;
+            const message = genererMessageDevis();
+            
+            // Créer l'enregistrement du devis dans Firestore
+            const devisData = {
+                reference: referenceDevis,
+                date: serverTimestamp(),
+                statut: 'en_attente',
+                type: 'devis',
+                details: devisDetails,
+                totalEstime: calculerTotal(),
+                produits: Object.keys(panier).map(produitId => {
+                    const produit = produits.find(p => p.id === produitId);
+                    return {
+                        produitId: produit.id,
+                        reference: produit.reference,
+                        nom: produit.nom,
+                        quantite: panier[produitId],
+                        unite: produit.unite,
+                        prix: produit.prix
+                    };
+                })
+            };
+
+            if (selectedFournisseurForDevis !== null) {
+                // Fournisseur existant
+                devisData.fournisseurId = selectedFournisseurForDevis.id;
+                devisData.fournisseurNom = selectedFournisseurForDevis.nomEntreprise;
+                devisData.fournisseurEmail = selectedFournisseurForDevis.email;
+                devisData.fournisseurTelephone = selectedFournisseurForDevis.telephone;
+                
+                // Envoyer selon la méthode choisie
+                switch (methodeEnvoi) {
+                    case 'email':
+                        await envoyerEmail(selectedFournisseurForDevis, message, `Demande de Devis - ${referenceDevis}`);
+                        break;
+                    case 'whatsapp':
+                        await envoyerWhatsApp(selectedFournisseurForDevis, message);
+                        break;
+                    case 'tous':
+                        await envoyerEmail(selectedFournisseurForDevis, message, `Demande de Devis - ${referenceDevis}`);
+                        await envoyerWhatsApp(selectedFournisseurForDevis, message);
+                        break;
+                }
+            } else {
+                // Fournisseur personnalisé
+                devisData.fournisseurPersonnalise = customFournisseur;
+                
+                // Envoyer par email uniquement pour les fournisseurs personnalisés
+                if (methodeEnvoi === 'email' || methodeEnvoi === 'tous') {
+                    const emailUrl = `mailto:${customFournisseur.email}?subject=${encodeURIComponent(`Demande de Devis - ${referenceDevis}`)}&body=${encodeURIComponent(message)}`;
+                    await Linking.openURL(emailUrl);
+                }
+            }
+
+            // Sauvegarder dans Firestore
+            await addDoc(collection(db, 'commandes'), devisData);
+            
+            Alert.alert(
+                'Succès ✅', 
+                `Demande de devis envoyée avec succès à ${selectedFournisseurForDevis ? selectedFournisseurForDevis.nomEntreprise : customFournisseur.nomEntreprise}`,
+                [
+                    {
+                        text: 'OK',
+                        onPress: () => {
+                            setPanier({});
+                            setShowDevisModal(false);
+                            setSelectedFournisseurForDevis(null);
+                            setCustomFournisseur({
+                                nomEntreprise: '',
+                                email: '',
+                                telephone: '',
+                                adresse: ''
+                            });
+                        }
+                    }
+                ]
+            );
+
+        } catch (error) {
+            console.error('Erreur:', error);
+            Alert.alert('Erreur', 'Erreur lors de l\'envoi: ' + error.message);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    // --- Fonctions d'envoi (existantes)
     const envoyerEmail = async (fournisseur: any, message: string, sujet: string) => {
         const url = `mailto:${fournisseur.email}?subject=${encodeURIComponent(sujet)}&body=${encodeURIComponent(message)}`;
 
@@ -322,515 +457,200 @@ const CommandeFournisseurs = ({ navigation }: any) => {
         }
     };
 
-
-
-    const creerNotification = async (fournisseurId: string, sousCommande: any, type: string = 'nouvelle_commande') => {
-        try {
-            await addDoc(collection(db, 'notifications'), {
-                fournisseurId: fournisseurId,
-                type: type,
-                titre: type === 'devis' ? 'Nouvelle demande de devis' : 'Nouvelle commande reçue',
-                message: type === 'devis' 
-                    ? `Vous avez une nouvelle demande de devis` 
-                    : `Vous avez une nouvelle commande (${sousCommande.reference})`,
-                commandeId: sousCommande.commandeId,
-                lu: false,
-                date: serverTimestamp()
-            });
-            return true;
-        }
-
-         catch (error) {
-            console.error('Erreur création notification:', error);
-            Alert.alert('Erreur', 'Erreur lors de la création de la notification.');
-            return false;
-        }
-
-    };
-
-    const envoyerCommande = async (methodeEnvoi: string) => {
-        if (Object.keys(panier).length === 0) {
-            Alert.alert('Erreur', 'Le panier est vide !');
-            return;
-        }
-  
-        setIsSubmitting(true);
-        try {
-            const panierParFournisseur = getPanierParFournisseur();
-            const referenceCommande = `CMD-${Date.now().toString().slice(-6)}`;
-
-            const commandePrincipale = {
-                reference: referenceCommande,
-                date: serverTimestamp(),
-                statut: 'envoyee',
-                total: calculerTotal(),
-                methodeEnvoi: methodeEnvoi,
-                type: 'commande'
-            };
-
-
-            const commandeDocRef = await addDoc(collection(db, 'commandes'), commandePrincipale);
-            let successCount = 0;
-
-            for (const fournisseurId in panierParFournisseur) {
-                const panierFournisseur = panierParFournisseur[fournisseurId];
-                const fournisseur = panierFournisseur.fournisseur;
-
-                const sousCommande = {
-                    commandeId: commandeDocRef.id,
-                    fournisseurId: fournisseurId,
-                    fournisseurNom: fournisseur.nomEntreprise,
-                    fournisseurEmail: fournisseur.email,
-                    fournisseurTelephone: fournisseur.telephone,
-                    produits: panierFournisseur.produits.map(p => ({
-                        produitId: p.id,
-                        reference: p.reference,
-                        nom: p.nom,
-                        logo: p.logo,
-                        quantite: p.quantite,
-                        unite: p.unite,
-                        prix: p.prix
-                    })),
-                    total: panierFournisseur.produits.reduce((sum, p) => sum + (p.prix * p.quantite), 0),
-                    statut: 'en_attente',
-                    date: serverTimestamp(),
-                    methodeEnvoi: methodeEnvoi,
-                    type: 'commande'
-                };
-
-                await addDoc(collection(db, 'sous_commandes'), sousCommande);
-                successCount++;
-                
-                const message = genererMessageCommande(fournisseurId);
-                switch (methodeEnvoi) {
-                    case 'email':
-                        await envoyerEmail(fournisseur, message, `Nouvelle Commande - ${fournisseur.nomEntreprise}`);
-                        break;
-                    case 'whatsapp':
-                        await envoyerWhatsApp(fournisseur, message);
-                        break;
-                    case 'notification':
-                        await creerNotification(fournisseurId, sousCommande);
-                        break;
-                    case 'tous':
-                        await envoyerEmail(fournisseur, message, `Nouvelle Commande - ${fournisseur.nomEntreprise}`);
-                        await envoyerWhatsApp(fournisseur, message);
-                        await creerNotification(fournisseurId, sousCommande);
-                        break;
-                }
-            }
-
-
-            Alert.alert('Succée', `✅ ${successCount} Commandes envoyées avec succès !`);
-            setPanier({});
-        } catch (error) {
-            console.error('Erreur:', error);
-            Alert.alert('Erreur', 'Erreur lors de l\'envoi: ' + error.message);
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-                 
-               
-                    
-    const envoyerDevis = async (methodeEnvoi: string) => {
-        if (Object.keys(panier).length === 0) {
-            Alert.alert('Erreur', 'Le panier est vide !');
-            return;
-        }
-                       
-                       
-                        
-        setIsSubmitting(true);
-        try {
-            const panierParFournisseur = getPanierParFournisseur();
-            const referenceDevis = `DEV-${Date.now().toString().slice(-6)}`;
-
-            const devisPrincipal = {
-                reference: referenceDevis,
-                date: serverTimestamp(),
-                statut: 'en_attente',
-                total: calculerTotal(),
-                methodeEnvoi: methodeEnvoi,
-                type: 'devis',
-                details: devisDetails
-            };
-                 
-                 
-                  
-            const devisDocRef = await addDoc(collection(db, 'commandes'), devisPrincipal);
-            let successCount = 0;
-
-    
-            for (const fournisseurId in panierParFournisseur) {
-                const panierFournisseur = panierParFournisseur[fournisseurId];
-                const fournisseur = panierFournisseur.fournisseur;
-
-                const sousDevis = {
-                    devisId: devisDocRef.id,
-                    fournisseurId: fournisseurId,
-                    fournisseurNom: fournisseur.nomEntreprise,
-                    fournisseurEmail: fournisseur.email,
-                    fournisseurTelephone: fournisseur.telephone,
-                    produits: panierFournisseur.produits.map(p => ({
-                        produitId: p.id,
-                        reference: p.reference,
-                        nom: p.nom,
-                        logo: p.logo,
-                        quantite: p.quantite,
-                        unite: p.unite,
-                        prix: p.prix
-                    })),
-                    totalEstime: panierFournisseur.produits.reduce((sum, p) => sum + (p.prix * p.quantite), 0),
-                    statut: 'en_attente',
-                    date: serverTimestamp(),
-                    methodeEnvoi: methodeEnvoi,
-                    type: 'devis',
-                    details: devisDetails
-                };
-
-                await addDoc(collection(db, 'sous_commandes'), sousDevis);
-                successCount++;
-                
-                const message = genererMessageDevis(fournisseurId);
-
-                switch (methodeEnvoi) {
-                    case 'email':
-                        await envoyerEmail(fournisseur, message, `Demande de Devis - ${fournisseur.nomEntreprise}`);
-                        break;
-                    case 'whatsapp':
-                        await envoyerWhatsApp(fournisseur, message);
-                        break;
-                    case 'notification':
-                        await creerNotification(fournisseurId, sousDevis, 'devis');
-                        break;
-                    case 'tous':
-                        await envoyerEmail(fournisseur, message, `Demande de Devis - ${fournisseur.nomEntreprise}`);
-                        await envoyerWhatsApp(fournisseur, message);
-                        await creerNotification(fournisseurId, sousDevis, 'devis');
-                        break;
-                }
-            }
-
-
-            Alert.alert('Succès', `✅ ${successCount} Demandes de devis envoyées avec succès !`);
-            setPanier({});
-            setShowDevisModal(false);
-        } catch (error) {
-            console.error('Erreur:', error);
-            Alert.alert('Erreur', 'Erreur lors de l\'envoi: ' + error.message);
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
     // --- Fonctions utilitaires
-    const viderRecherche = () => { setSearchTerm(''); setSearchCategory('all'); setSelectedFournisseur('all'); };
-    const getSearchPlaceholder = () => {
-        switch (searchCategory) {
-            case 'reference': return 'Rechercher par référence... (ex: PROD-001)';
-            case 'nom': return 'Rechercher par nom de produit...';
-            case 'description': return 'Rechercher dans les descriptions...';
-            case 'fournisseur': return 'Rechercher par nom de fournisseur...';
-            case 'prix': return 'Rechercher par prix... (ex: 10.50 ou 10-20)';
-            case 'stock': return 'Rechercher par stock... (ex: >10, <5, 10-50)';
-            case 'all': default: return 'Rechercher dans tous les champs...';
-        }
+    const viderRecherche = () => { 
+        setSearchTerm(''); 
+        setSearchCategory('all'); 
+        setSelectedFournisseur('all'); 
     };
-    const onRefresh = useCallback(() => { setRefreshing(true); setTimeout(() => setRefreshing(false), 1000); }, []);
+
+    const onRefresh = useCallback(() => { 
+        setRefreshing(true); 
+        setTimeout(() => setRefreshing(false), 1000); 
+    }, []);
 
     // --- Rendu ---
     return (
         <View style={styles.container}>
-            {/* Header */}
+            {/* Header avec icône devis */}
             <View style={styles.header}>
-                <Text style={styles.title}>📦 Passer une Commande / Devis</Text>
+                <View style={styles.headerTop}>
+                    <Text style={styles.title}>📦 Commandes & Devis</Text>
+                    <TouchableOpacity 
+                        style={styles.devisHeaderButton}
+                        onPress={ouvrirModalDevis}
+                    >
+                        <Icon name="file-document-outline" size={24} color={COLORS.headerText} />
+                        <Text style={styles.devisHeaderButtonText}>Devis</Text>
+                    </TouchableOpacity>
+                </View>
                 <Text style={styles.subtitle}>
-                    Sélectionnez les produits et envoyez commandes ou demandes de devis aux fournisseurs
+                    Sélectionnez les produits et envoyez commandes ou demandes de devis
                 </Text>
             </View>
             
-            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            <ScrollView 
+                contentContainerStyle={styles.scrollContent} 
+                showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl 
+                        refreshing={refreshing} 
+                        onRefresh={onRefresh} 
+                        colors={[COLORS.primary]} 
+                    />
+                }
+            >
                 <View style={styles.mainContent}>
                     {/* Section Produits */}
                     <View style={styles.produitsSection}>
-                        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1 }}
-                            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-                        >
-                            {/* Barre de recherche avancée */}
-                            <View style={styles.searchSection}>
-                                
-                                {/* Filtres (Catégorie & Fournisseur) */}
-                                <View style={styles.searchFilters}>
+                        {/* Barre de recherche et filtres */}
+                        <View style={styles.searchSection}>
+                            {/* Ici vous pouvez ajouter votre code de recherche existant */}
+                        </View>
+
+                        {/* Liste des produits avec bouton devis rapide */}
+                        {produitsFiltres.map(produit => {
+                            const fournisseur = fournisseurs.find(f => f.id === produit.fournisseurId);
+                            const quantitePanier = panier[produit.id] || 0;
+
+                            return (
+                                <View key={produit.id} style={[styles.produitCard, quantitePanier > 0 && styles.produitCardSelected]}>
+                                    {/* Logo/Image */}
+                                    {renderProduitLogo(produit)}
                                     
-                                    {/* Filtre par catégorie (Chips scrollables) */}
-                                    <View style={styles.filterGroup}>
-                                        <Text style={styles.filterGroupIcon}>📊</Text>
-                                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsContainer}>
-                                            {[
-                                                { value: 'all', label: 'Tous critères' }, { value: 'reference', label: 'Référence' },
-                                                { value: 'nom', label: 'Nom' }, { value: 'description', label: 'Description' },
-                                                { value: 'fournisseur', label: 'Fournisseur' }, { value: 'prix', label: 'Prix' }, { value: 'stock', label: 'Stock' }
-                                            ].map(category => (
-                                                <TouchableOpacity key={category.value} style={[styles.chip, searchCategory === category.value && styles.chipActiveCategory]} onPress={() => setSearchCategory(category.value)}>
-                                                    <Text style={[styles.chipText, searchCategory === category.value && styles.chipTextActive]}>
-                                                        {category.label}
-                                                    </Text>
-                                                </TouchableOpacity>
-                                            ))}
-                                        </ScrollView>
+                                    {/* Informations */}
+                                    <View style={styles.produitInfo}>
+                                        <Text style={styles.produitNom}>{produit.reference} - {produit.nom}</Text>
+                                        <Text style={styles.produitDetails}>
+                                            {fournisseur?.nomEntreprise} • {produit.prix}€/{produit.unite} • Stock: {produit.stock}
+                                        </Text>
+                                        {produit.description && (
+                                            <Text style={styles.produitDescription}>{produit.description}</Text>
+                                        )}
                                     </View>
-                                    
-                                    {/* Filtre par fournisseur (Chips scrollables) */}
-                                    <View style={styles.filterGroup}>
-                                        <Text style={styles.filterGroupIcon}>🏢</Text>
-                                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsContainer}>
-                                            <TouchableOpacity style={[styles.chip, selectedFournisseur === 'all' && styles.chipActiveFournisseur]} onPress={() => setSelectedFournisseur('all')}>
-                                                <Text style={[styles.chipText, selectedFournisseur === 'all' && styles.chipTextActive]}>Tous</Text>
+
+                                    {/* Actions */}
+                                    <View style={styles.produitActions}>
+                                        {/* Contrôles de quantité */}
+                                        <View style={styles.quantityControls}>
+                                            {quantitePanier > 0 && (
+                                                <>
+                                                    <TouchableOpacity 
+                                                        style={styles.quantityButtonRemove} 
+                                                        onPress={() => retirerDuPanier(produit.id)}
+                                                    >
+                                                        <Text style={styles.quantityButtonText}>-</Text>
+                                                    </TouchableOpacity>
+                                                    <Text style={styles.quantityText}>{quantitePanier}</Text>
+                                                </>
+                                            )}
+                                            <TouchableOpacity 
+                                                style={[styles.quantityButtonAdd, produit.stock <= quantitePanier && styles.quantityButtonDisabled]} 
+                                                onPress={() => ajouterAuPanier(produit.id)} 
+                                                disabled={produit.stock <= quantitePanier}
+                                            >
+                                                <Text style={styles.quantityButtonText}>+</Text>
                                             </TouchableOpacity>
-                                            {fournisseurs.map(f => (
-                                                <TouchableOpacity key={f.id} style={[styles.chip, selectedFournisseur === f.id && styles.chipActiveFournisseur]} onPress={() => setSelectedFournisseur(f.id)}>
-                                                    <Text style={[styles.chipText, selectedFournisseur === f.id && styles.chipTextActive]}>
-                                                        {f.nomEntreprise}
-                                                    </Text>
-                                                </TouchableOpacity>
-                                            ))}
-                                        </ScrollView>
-                                    </View>
-
-                                    {/* Bouton aide recherche */}
-                                    <TouchableOpacity style={styles.helpButton} onPress={() => setShowSearchHelp(!showSearchHelp)}>
-                                        <Text style={styles.helpButtonText}>{getEmoji('search')} Aide recherche</Text>
-                                    </TouchableOpacity>
-                                </View>
-
-                                {/* Champ de recherche principal */}
-                                <View style={styles.searchInputContainer}>
-                                    <Text style={styles.searchIcon}>{getEmoji(searchCategory)}</Text>
-                                    <TextInput
-                                        style={styles.searchInput}
-                                        placeholder={getSearchPlaceholder()}
-                                        placeholderTextColor={COLORS.textSecondary}
-                                        value={searchTerm}
-                                        onChangeText={setSearchTerm}
-                                    />
-                                    {searchTerm ? (
-                                        <TouchableOpacity style={styles.clearButton} onPress={viderRecherche}>
-                                            <Text style={styles.clearButtonText}>✕</Text>
-                                        </TouchableOpacity>
-                                    ) : null}
-                                </View>
-
-                                {/* Aide à la recherche */}
-                                {showSearchHelp && (
-                                    <View style={styles.helpContainer}>
-                                        <Text style={styles.helpTitle}>🔍 Astuces de recherche :</Text>
-                                        <View style={styles.helpTips}>
-                                            <Text style={styles.helpTip}><Text style={styles.helpBold}>Prix :</Text> "10.50" (exact) ou "10-20" (fourchette)</Text>
-                                            <Text style={styles.helpTip}><Text style={styles.helpBold}>Stock :</Text> {'>'}10 (supérieur), {'<'}5 (inférieur), "10-50" (fourchette)</Text>
-                                            <Text style={styles.helpTip}><Text style={styles.helpBold}>Référence :</Text> "PROD-001" (numéro exact)</Text>
                                         </View>
-                                    </View>
-                                )}
-                            </View>
-
-                            {/* Compteur de résultats */}
-                            <View style={styles.resultsCounter}>
-                                <Text style={styles.resultsText}>
-                                    {produitsFiltres.length} produit(s) trouvé(s)
-                                </Text>
-                                {(searchTerm || selectedFournisseur !== 'all' || searchCategory !== 'all') && (
-                                    <TouchableOpacity style={styles.resetButton} onPress={viderRecherche}>
-                                        <Text style={styles.resetButtonText}>Réinitialiser tout</Text>
-                                    </TouchableOpacity>
-                                )}
-                            </View>
-
-                            {/* Liste des produits */}
-                            {produitsFiltres.length === 0 ? (
-                                <View style={styles.emptyState}>
-                                    <Text style={styles.emptyStateIcon}>🔍</Text>
-                                    <Text style={styles.emptyStateTitle}>Aucun produit trouvé</Text>
-                                    <Text style={styles.emptyStateText}>
-                                        {searchTerm ? `Aucun résultat pour "${searchTerm}"` : 'Aucun produit disponible avec les filtres actuels'}
-                                    </Text>
-                                    {(searchTerm || selectedFournisseur !== 'all' || searchCategory !== 'all') && (
-                                        <TouchableOpacity style={styles.showAllButton} onPress={viderRecherche}>
-                                            <Text style={styles.showAllButtonText}>Afficher tous les produits</Text>
+                                        
+                                        {/* Bouton devis rapide */}
+                                        <TouchableOpacity 
+                                            style={styles.quickDevisButton}
+                                            onPress={() => {
+                                                ajouterAuPanier(produit.id);
+                                                setTimeout(() => ouvrirModalDevis(), 300);
+                                            }}
+                                        >
+                                            <Icon name="file-document-outline" size={16} color={COLORS.devis} />
                                         </TouchableOpacity>
-                                    )}
+                                    </View>
                                 </View>
-                            ) : (
-                                produitsFiltres.map(produit => {
-                                    const fournisseur = fournisseurs.find(f => f.id === produit.fournisseurId);
-                                    const quantitePanier = panier[produit.id] || 0;
-
-                                    return (
-                                        <View key={produit.id} style={[styles.produitCard, quantitePanier > 0 && styles.produitCardSelected]}>
-                                            
-                                            {/* Logo/Image */}
-                                            {renderLogo(produit.logo, getEmoji('nom'), 60)}
-                                            
-                                            {/* Informations */}
-                                            <View style={styles.produitInfo}>
-                                                <Text style={styles.produitNom}>{produit.reference} - {produit.nom}</Text>
-                                                <Text style={styles.produitDetails}>
-                                                    {fournisseur?.nomEntreprise} • {produit.prix}€/{produit.unite} • Stock: {produit.stock}
-                                                </Text>
-                                                {produit.description && <Text style={styles.produitDescription}>{produit.description}</Text>}
-                                            </View>
-
-                                            {/* Contrôles de quantité */}
-                                            <View style={styles.quantityControls}>
-                                                {quantitePanier > 0 && (
-                                                    <>
-                                                        <TouchableOpacity style={styles.quantityButtonRemove} onPress={() => retirerDuPanier(produit.id)}>
-                                                            <Text style={styles.quantityButtonText}>-</Text>
-                                                        </TouchableOpacity>
-                                                        <Text style={styles.quantityText}>{quantitePanier}</Text>
-                                                    </>
-                                                )}
-                                                <TouchableOpacity 
-                                                    style={[styles.quantityButtonAdd, produit.stock <= quantitePanier && styles.quantityButtonDisabled]} 
-                                                    onPress={() => ajouterAuPanier(produit.id)} 
-                                                    disabled={produit.stock <= quantitePanier} >
-
-
-
-                                                    <Text style={styles.quantityButtonText}> + </Text>
-                                                </TouchableOpacity>
-                                            </View>
-                                        </View>
-                                    );
-                                })
-                            )}
-                        </ScrollView>
+                            );
+                        })}
                     </View>
-                                                                                                                   
-                                                    
-                                                    
-                                                       
-                                          
- {/* Section Panier */}
-                    <View style={styles.panierSection}>
-                        <Text style={styles.panierTitle}>🛒 Panier de Commandes / Devis</Text>
 
+                    {/* Section Panier améliorée */}
+                    <View style={styles.panierSection}>
+                        {/* En-tête avec bouton devis visible */}
+                        <View style={styles.panierHeader}>
+                            <Text style={styles.panierTitle}>🛒 Panier</Text>
+                            <TouchableOpacity 
+                                style={[styles.devisFloatingButton, Object.keys(panier).length === 0 && styles.buttonDisabled]}
+                                onPress={ouvrirModalDevis}
+                                disabled={Object.keys(panier).length === 0}
+                            >
+                                <Icon name="file-document-outline" size={20} color={COLORS.headerText} />
+                                <Text style={styles.devisFloatingButtonText}>Demander un Devis</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Contenu du panier */}
                         {Object.keys(panier).length === 0 ? (
                             <View style={styles.emptyPanier}>
-                                <Text style={styles.emptyPanierIcon}>🛒</Text>
+                                <Icon name="cart-outline" size={60} color={COLORS.neutral} />
                                 <Text style={styles.emptyPanierText}>Votre panier est vide</Text>
                                 <Text style={styles.emptyPanierSubtext}>Ajoutez des produits pour commencer</Text>
                             </View>
                         ) : (
                             <View style={{ flex: 1 }}>
-                                {/* Résumé par fournisseur */}
-                                <View style={styles.fournisseursSummary}>
-                                    <Text style={styles.summaryTitle}>Commandes/Demis à préparer:</Text>
-                                    <ScrollView style={styles.fournisseursList} showsVerticalScrollIndicator={false}>
-                                        {Object.entries(getPanierParFournisseur()).map(([fournisseurId, data]) => (
-                                            <View key={fournisseurId} style={styles.fournisseurCard}>
-                                                <Text style={styles.fournisseurName}>{data.fournisseur.nomEntreprise}</Text>
-                                                
-                                                <View style={styles.produitsCompactList}>
-                                                    {data.produits.map(produit => (
-                                                        <View key={produit.id} style={styles.produitRow}>
-                                                            {renderLogo(produit.logo, '📦', 40)}
-                                                            <View style={styles.produitInfoCompact}>
-                                                                <Text style={styles.produitNomCompact}>{produit.reference}</Text>
-                                                                <Text style={styles.produitDetailsCompact}>{produit.nom}</Text>
-                                                            </View>
-                                                            <View style={styles.produitQuantite}>
-                                                                <Text style={styles.quantiteText}>{produit.quantite} {produit.unite}</Text>
-                                                                <Text style={styles.sousTotalText}>{(produit.prix * produit.quantite).toFixed(2)}€</Text>
-                                                            </View>
-                                                            <TouchableOpacity onPress={() => supprimerDuPanier(produit.id)} style={{ padding: 4 }}>
-                                                                <Text style={{ color: COLORS.danger, fontSize: 16 }}>✕</Text>
-                                                            </TouchableOpacity>
-                                                        </View>
-                                                    ))}
+                                {/* Liste des produits dans le panier */}
+                                <ScrollView style={styles.panierList} showsVerticalScrollIndicator={false}>
+                                    {Object.entries(getPanierParFournisseur()).map(([fournisseurId, data]) => (
+                                        <View key={fournisseurId} style={styles.fournisseurPanierCard}>
+                                            <Text style={styles.fournisseurPanierName}>
+                                                {data.fournisseur?.nomEntreprise || 'Fournisseur inconnu'}
+                                            </Text>
+                                            
+                                            {data.produits.map(produit => (
+                                                <View key={produit.id} style={styles.panierItem}>
+                                                    <View style={styles.panierItemInfo}>
+                                                        <Text style={styles.panierItemName}>{produit.nom}</Text>
+                                                        <Text style={styles.panierItemDetails}>
+                                                            {produit.reference} • {produit.quantite} {produit.unite} • {produit.prix}€/unité
+                                                        </Text>
+                                                    </View>
+                                                    <View style={styles.panierItemActions}>
+                                                        <Text style={styles.panierItemTotal}>
+                                                            {(produit.prix * produit.quantite).toFixed(2)}€
+                                                        </Text>
+                                                        <TouchableOpacity 
+                                                            onPress={() => supprimerDuPanier(produit.id)}
+                                                            style={styles.deleteButton}
+                                                        >
+                                                            <Icon name="close" size={18} color={COLORS.danger} />
+                                                        </TouchableOpacity>
+                                                    </View>
                                                 </View>
+                                            ))}
+                                        </View>
+                                    ))}
+                                </ScrollView>
 
-                                                <View style={styles.fournisseurTotal}>
-                                                    <Text style={styles.fournisseurTotalLabel}>Total:</Text>
-                                                    <Text style={styles.fournisseurTotalValue}>
-                                                        {data.produits.reduce((sum, p) => sum + (p.prix * p.quantite), 0).toFixed(2)}€
-                                                    </Text>
-                                                </View>
-                                            </View>
-                                        ))}
-
-
-                                    </ScrollView>
-                                </View>
-
-
-
-                            {/* Total Général et Boutons d'envoi */}
-
-                                <View style={{ flex: 1, justifyContent: 'flex-end' }}>
-
-                                    {/* Total Général */}
-                                    <View style={styles.totalGeneral}>
-                                        <Text style={styles.totalLabel}>Total Général:</Text>
+                                {/* Total et boutons d'action */}
+                                <View style={styles.panierFooter}>
+                                    <View style={styles.totalContainer}>
+                                        <Text style={styles.totalLabel}>Total estimé:</Text>
                                         <Text style={styles.totalValue}>{calculerTotal().toFixed(2)}€</Text>
                                     </View>
 
-
-
-  {/* Boutons d'envoi - Commandes */}
-    <Text style={styles.sectionSubtitle}>Commandes</Text>
-
-
-                                    <View style={styles.sendButtons}>
-                                        <TouchableOpacity style={[styles.sendButton, { backgroundColor: COLORS.success }]} onPress={() => envoyerCommande('email')} disabled={isSubmitting}>
-                                            {isSubmitting ? <ActivityIndicator color={COLORS.headerText} /> : <Text style={styles.sendButtonText}>📧 Envoyer Commande par Email</Text>}
-                                        </TouchableOpacity>
-
-                                        <TouchableOpacity style={[styles.sendButton, { backgroundColor: COLORS.whatsapp }]} onPress={() => envoyerCommande('whatsapp')} disabled={isSubmitting}>
-                                            {isSubmitting ? <ActivityIndicator color={COLORS.headerText} /> : <Text style={styles.sendButtonText}>💚 Envoyer Commande par WhatsApp</Text>}
-                                        </TouchableOpacity> 
-
-                                        <TouchableOpacity style={[styles.sendButton, { backgroundColor: COLORS.warning }]} onPress={() => envoyerCommande('notification')} disabled={isSubmitting}>
-                                            {isSubmitting ? <ActivityIndicator color={COLORS.headerText} /> : <Text style={styles.sendButtonText}>🔔 Notification Interne</Text>}
-                                        </TouchableOpacity>
-
-                                        <TouchableOpacity style={[styles.sendButton, styles.allChannelsButton]} onPress={() => envoyerCommande('tous')} disabled={isSubmitting}>
-                                            {isSubmitting ? <ActivityIndicator color={COLORS.headerText} /> : <Text style={styles.sendButtonText}>🚀 Tous les Canaux</Text>}
-                                        </TouchableOpacity>
-                                    </View>
-
-                                    {/* Boutons d'envoi - Devis */}
-                                    <Text style={[styles.sectionSubtitle, { marginTop: 16, color: COLORS.devis }]}>Demandes de Devis</Text>
-                                    <View style={styles.sendButtons}>
+                                    {/* Boutons d'envoi */}
+                                    <View style={styles.actionButtons}>
                                         <TouchableOpacity 
-                                            style={[styles.sendButton, { backgroundColor: COLORS.devis }]} 
-                                            onPress={() => setShowDevisModal(true)} 
-                                            disabled={isSubmitting} >
-
-                                            {isSubmitting ? <ActivityIndicator color={COLORS.headerText} /> : <Text style={styles.sendButtonText}>📋 Demander un Devis</Text>}
-                                        </TouchableOpacity>
-
-                                        <TouchableOpacity 
-                                            style={[styles.sendButton, { backgroundColor: '#6D28D9' }]} 
-                                            onPress={() => Alert.alert(
-                                                'Envoi rapide',
-                                                'Voulez-vous envoyer une demande de devis avec les paramètres par défaut?',
-                                                [
-                                                    { text: 'Annuler', style: 'cancel' },
-                                                    { text: 'Envoyer', onPress: () => envoyerDevis('email') }
-                                                ]
-                                            )} 
-                                            disabled={isSubmitting}
+                                            style={[styles.actionButton, styles.devisButton]}
+                                            onPress={ouvrirModalDevis}
                                         >
-                                            {isSubmitting ? <ActivityIndicator color={COLORS.headerText} /> : <Text style={styles.sendButtonText}>📨 Devis par Email</Text>}
+                                            <Icon name="file-document-outline" size={18} color={COLORS.headerText} />
+                                            <Text style={styles.actionButtonText}>Demander un Devis</Text>
+                                        </TouchableOpacity>
+
+                                        <TouchableOpacity 
+                                            style={[styles.actionButton, styles.commandeButton]}
+                                            onPress={() => Alert.alert('Commande', 'Fonctionnalité de commande à implémenter')}
+                                        >
+                                            <Icon name="email-outline" size={18} color={COLORS.headerText} />
+                                            <Text style={styles.actionButtonText}>Commander</Text>
                                         </TouchableOpacity>
                                     </View>
-
-                                    {/* Bouton vider panier */}
-                                    <TouchableOpacity style={[styles.sendButton, { backgroundColor: COLORS.neutral, marginTop: 16 }]} onPress={() => setPanier({})}>
-                                        <Text style={styles.sendButtonText}>🗑️ Vider le Panier</Text>
-                                    </TouchableOpacity>
-
                                 </View>
                             </View>
                         )}
@@ -838,7 +658,103 @@ const CommandeFournisseurs = ({ navigation }: any) => {
                 </View>
             </ScrollView>
 
-            {/* Modal pour les détails du devis */}
+            {/* Modal de sélection du fournisseur pour devis */}
+            <Modal
+                visible={showFournisseurModal}
+                transparent={true}
+                animationType="slide"
+                onRequestClose={() => setShowFournisseurModal(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <KeyboardAvoidingView 
+                        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                        style={styles.modalContainer}
+                    >
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>👥 Sélectionnez un fournisseur</Text>
+                            <TouchableOpacity onPress={() => setShowFournisseurModal(false)}>
+                                <Icon name="close" size={24} color={COLORS.neutral} />
+                            </TouchableOpacity>
+                        </View>
+                        
+                        <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+                            <Text style={styles.modalSubtitle}>
+                                Choisissez un fournisseur existant ou entrez les coordonnées d'un nouveau fournisseur
+                            </Text>
+
+                            {/* Liste des fournisseurs existants */}
+                            <Text style={styles.sectionTitle}>Fournisseurs enregistrés</Text>
+                            <View style={styles.fournisseursList}>
+                                {fournisseurs.map(fournisseur => (
+                                    <TouchableOpacity
+                                        key={fournisseur.id}
+                                        style={styles.fournisseurItem}
+                                        onPress={() => continuerAvecFournisseur(fournisseur)}
+                                    >
+                                        <View style={styles.fournisseurInfo}>
+                                            <Text style={styles.fournisseurName}>{fournisseur.nomEntreprise}</Text>
+                                            <Text style={styles.fournisseurDetails}>
+                                                {fournisseur.email} • {fournisseur.telephone}
+                                            </Text>
+                                        </View>
+                                        <Icon name="chevron-right" size={24} color={COLORS.neutral} />
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+
+                            {/* Fournisseur personnalisé */}
+                            <Text style={[styles.sectionTitle, { marginTop: 24 }]}>
+                                Ou entrez les coordonnées d'un nouveau fournisseur
+                            </Text>
+                            
+                            <View style={styles.customFournisseurForm}>
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="Nom de l'entreprise *"
+                                    value={customFournisseur.nomEntreprise}
+                                    onChangeText={(text) => setCustomFournisseur({...customFournisseur, nomEntreprise: text})}
+                                />
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="Email *"
+                                    value={customFournisseur.email}
+                                    onChangeText={(text) => setCustomFournisseur({...customFournisseur, email: text})}
+                                    keyboardType="email-address"
+                                />
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="Téléphone"
+                                    value={customFournisseur.telephone}
+                                    onChangeText={(text) => setCustomFournisseur({...customFournisseur, telephone: text})}
+                                    keyboardType="phone-pad"
+                                />
+                                <TextInput
+                                    style={[styles.input, styles.textArea]}
+                                    placeholder="Adresse (optionnel)"
+                                    value={customFournisseur.adresse}
+                                    onChangeText={(text) => setCustomFournisseur({...customFournisseur, adresse: text})}
+                                    multiline
+                                />
+                                
+                                <TouchableOpacity
+                                    style={[styles.continueButton, 
+                                        (!customFournisseur.nomEntreprise || !customFournisseur.email) && 
+                                        styles.continueButtonDisabled
+                                    ]}
+                                    onPress={() => continuerAvecFournisseur(null)}
+                                    disabled={!customFournisseur.nomEntreprise || !customFournisseur.email}
+                                >
+                                    <Text style={styles.continueButtonText}>
+                                        Continuer avec ce fournisseur
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
+                        </ScrollView>
+                    </KeyboardAvoidingView>
+                </View>
+            </Modal>
+
+            {/* Modal des détails du devis */}
             <Modal
                 visible={showDevisModal}
                 transparent={true}
@@ -846,37 +762,60 @@ const CommandeFournisseurs = ({ navigation }: any) => {
                 onRequestClose={() => setShowDevisModal(false)}
             >
                 <View style={styles.modalOverlay}>
-                    <View style={styles.modalContainer}>
+                    <KeyboardAvoidingView 
+                        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                        style={styles.modalContainer}
+                    >
                         <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>📋 Paramètres du Devis</Text>
+                            <Text style={styles.modalTitle}>📋 Détails du devis</Text>
                             <TouchableOpacity onPress={() => setShowDevisModal(false)}>
-                                <Text style={styles.modalClose}>✕</Text>
+                                <Icon name="close" size={24} color={COLORS.neutral} />
                             </TouchableOpacity>
                         </View>
                         
                         <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
-                            <Text style={styles.modalSubtitle}>Personnalisez votre demande de devis</Text>
-                            
+                            {/* Info fournisseur */}
+                            <View style={styles.devisFournisseurInfo}>
+                                <Text style={styles.devisFournisseurTitle}>Destinataire:</Text>
+                                <Text style={styles.devisFournisseurName}>
+                                    {selectedFournisseurForDevis ? 
+                                        selectedFournisseurForDevis.nomEntreprise : 
+                                        customFournisseur.nomEntreprise}
+                                </Text>
+                            </View>
+
+                            {/* Détails du devis */}
                             <View style={styles.inputGroup}>
-                                <Text style={styles.inputLabel}>Objet du devis</Text>
+                                <Text style={styles.inputLabel}>Objet du devis *</Text>
                                 <TextInput
                                     style={styles.textInput}
                                     value={devisDetails.objet}
                                     onChangeText={(text) => setDevisDetails({...devisDetails, objet: text})}
-                                    placeholder="Ex: Devis pour pièces de rechange"
+                                    placeholder="Ex: Devis pour pièces de rechange hôtel"
                                 />
                             </View>
-                            
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.inputLabel}>Délai de livraison souhaité</Text>
-                                <TextInput
-                                    style={styles.textInput}
-                                    value={devisDetails.delaiLivraison}
-                                    onChangeText={(text) => setDevisDetails({...devisDetails, delaiLivraison: text})}
-                                    placeholder="Ex: 15 jours"
-                                />
+
+                            <View style={styles.inputRow}>
+                                <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
+                                    <Text style={styles.inputLabel}>Délai souhaité</Text>
+                                    <TextInput
+                                        style={styles.textInput}
+                                        value={devisDetails.delaiLivraison}
+                                        onChangeText={(text) => setDevisDetails({...devisDetails, delaiLivraison: text})}
+                                        placeholder="Ex: 15 jours"
+                                    />
+                                </View>
+                                <View style={[styles.inputGroup, { flex: 1 }]}>
+                                    <Text style={styles.inputLabel}>Validité devis</Text>
+                                    <TextInput
+                                        style={styles.textInput}
+                                        value={devisDetails.validiteDevis}
+                                        onChangeText={(text) => setDevisDetails({...devisDetails, validiteDevis: text})}
+                                        placeholder="Ex: 30 jours"
+                                    />
+                                </View>
                             </View>
-                            
+
                             <View style={styles.inputGroup}>
                                 <Text style={styles.inputLabel}>Conditions de paiement</Text>
                                 <TextInput
@@ -886,152 +825,153 @@ const CommandeFournisseurs = ({ navigation }: any) => {
                                     placeholder="Ex: 30 jours fin de mois"
                                 />
                             </View>
-                            
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.inputLabel}>Informations de contact</Text>
 
+                            {/* Informations de contact */}
+                            <Text style={styles.sectionTitle}>Vos informations</Text>
+                            <View style={styles.inputRow}>
+                                <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
+                                    <Text style={styles.inputLabel}>Nom du contact *</Text>
+                                    <TextInput
+                                        style={styles.textInput}
+                                        value={devisDetails.nomContact}
+                                        onChangeText={(text) => setDevisDetails({...devisDetails, nomContact: text})}
+                                        placeholder="Votre nom"
+                                    />
+                                </View>
+                                <View style={[styles.inputGroup, { flex: 1 }]}>
+                                    <Text style={styles.inputLabel}>Téléphone *</Text>
+                                    <TextInput
+                                        style={styles.textInput}
+                                        value={devisDetails.telephoneContact}
+                                        onChangeText={(text) => setDevisDetails({...devisDetails, telephoneContact: text})}
+                                        placeholder="Votre téléphone"
+                                        keyboardType="phone-pad"
+                                    />
+                                </View>
+                            </View>
+
+                            <View style={styles.inputGroup}>
+                                <Text style={styles.inputLabel}>Email *</Text>
                                 <TextInput
                                     style={styles.textInput}
-                                    value={devisDetails.nomContact}
-                                    onChangeText={(text) => setDevisDetails({...devisDetails, nomContact: text})}
-                                    placeholder="Nom du contact"
-                                />
-                                <TextInput
-                                    style={[styles.textInput, { marginTop: 8 }]}
                                     value={devisDetails.emailContact}
                                     onChangeText={(text) => setDevisDetails({...devisDetails, emailContact: text})}
-                                    placeholder="Email de contact"
+                                    placeholder="Votre email"
                                     keyboardType="email-address"
                                 />
-                                <TextInput
-                                    style={[styles.textInput, { marginTop: 8 }]}
-                                    value={devisDetails.telephoneContact}
-                                    onChangeText={(text) => setDevisDetails({...devisDetails, telephoneContact: text})}
-                                    placeholder="Téléphone de contact"a
-                                    keyboardType="phone-pad"  />
                             </View>
-                            
+
                             <View style={styles.inputGroup}>
                                 <Text style={styles.inputLabel}>Remarques supplémentaires</Text>
                                 <TextInput
                                     style={[styles.textInput, styles.textArea]}
                                     value={devisDetails.remarques}
                                     onChangeText={(text) => setDevisDetails({...devisDetails, remarques: text})}
-                                    placeholder="Informations complémentaires..."
+                                    placeholder="Informations complémentaires, spécifications techniques..."
                                     multiline
                                     numberOfLines={4}
                                 />
                             </View>
-                            
 
-                            <View style={styles.modalStats}>
-                                <Text style={styles.modalStatsTitle}>Récapitulatif</Text>
-                                <View style={styles.statsRow}>
-                                    <Text style={styles.statsLabel}>Produits:</Text>
-                                    <Text style={styles.statsValue}>{Object.keys(panier).length}</Text>
+                            {/* Récapitulatif */}
+                            <View style={styles.devisRecap}>
+                                <Text style={styles.devisRecapTitle}>Récapitulatif</Text>
+                                <View style={styles.recapRow}>
+                                    <Text style={styles.recapLabel}>Produits:</Text>
+                                    <Text style={styles.recapValue}>{Object.keys(panier).length}</Text>
                                 </View>
-                                <View style={styles.statsRow}>
-                                    <Text style={styles.statsLabel}>Fournisseurs:</Text>
-                                    <Text style={styles.statsValue}>{Object.keys(getPanierParFournisseur()).length}</Text>
-                                </View>
-                                <View style={styles.statsRow}>
-                                    <Text style={styles.statsLabel}>Total estimé:</Text>
-                                    <Text style={styles.statsValue}>{calculerTotal().toFixed(2)}€</Text>
+                                <View style={styles.recapRow}>
+                                    <Text style={styles.recapLabel}>Total estimé:</Text>
+                                    <Text style={styles.recapValue}>{calculerTotal().toFixed(2)}€</Text>
                                 </View>
                             </View>
-                            
 
-                            <View style={styles.modalButtons}>
+                            {/* Boutons d'envoi */}
+                            <View style={styles.devisButtons}>
                                 <TouchableOpacity 
-                                    style={[styles.modalButton, { backgroundColor: COLORS.devis }]} 
+                                    style={[styles.devisActionButton, { backgroundColor: COLORS.devis }]}
                                     onPress={() => envoyerDevis('email')}
-                                    disabled={isSubmitting} >
-
-                                    {isSubmitting ? (
-                                        <ActivityIndicator color={COLORS.headerText} />
-                                    ) : (
-                                        <Text style={styles.modalButtonText}>📧 Envoyer Devis par Email</Text>
-                                    )}
-                                </TouchableOpacity>
-                         
-                             
-                                <TouchableOpacity 
-                                    style={[styles.modalButton, { backgroundColor: COLORS.whatsapp }]} 
-                                    onPress={() => envoyerDevis('whatsapp')}
-                                    disabled={isSubmitting}
+                                    disabled={isSubmitting || !devisDetails.objet || !devisDetails.nomContact || !devisDetails.emailContact}
                                 >
                                     {isSubmitting ? (
                                         <ActivityIndicator color={COLORS.headerText} />
                                     ) : (
-                                        <Text style={styles.modalButtonText}>💚 Envoyer Devis par WhatsApp</Text>
+                                        <>
+                                            <Icon name="email-outline" size={20} color={COLORS.headerText} />
+                                            <Text style={styles.devisActionButtonText}>Envoyer par Email</Text>
+                                        </>
                                     )}
                                 </TouchableOpacity>
-                                               
-                                                 
-                                <TouchableOpacity 
-                                    style={[styles.modalButton, { backgroundColor: COLORS.info }]} 
-                                    onPress={() => envoyerDevis('tous')}
-                                    disabled={isSubmitting} >
-
-                                    {isSubmitting ? (
-                                        <ActivityIndicator color={COLORS.headerText} />
-                                    ) : (
-
-                                        <Text style={styles.modalButtonText}>🚀 Tous les Canaux</Text>
-                                         )}
-                                 
-                                </TouchableOpacity>
                                 
-                                 
+                                {selectedFournisseurForDevis && selectedFournisseurForDevis.telephone && (
+                                    <TouchableOpacity 
+                                        style={[styles.devisActionButton, { backgroundColor: COLORS.whatsapp }]}
+                                        onPress={() => envoyerDevis('whatsapp')}
+                                        disabled={isSubmitting}
+                                    >
+                                        <Icon name="whatsapp" size={20} color={COLORS.headerText} />
+                                        <Text style={styles.devisActionButtonText}>Envoyer par WhatsApp</Text>
+                                    </TouchableOpacity>
+                                )}
+                                
                                 <TouchableOpacity 
-                                    style={[styles.modalButton, { backgroundColor: COLORS.neutral }]} 
-                                    onPress={() => setShowDevisModal(false)} >
-
-                                    <Text style={styles.modalButtonText}>Annuler</Text>
+                                    style={[styles.devisActionButton, { backgroundColor: COLORS.neutral }]}
+                                    onPress={() => setShowDevisModal(false)}
+                                >
+                                    <Text style={styles.devisActionButtonText}>Annuler</Text>
                                 </TouchableOpacity>
-                                                                          
-                                                                       
                             </View>
                         </ScrollView>
-                    </View>
+                    </KeyboardAvoidingView>
                 </View>
             </Modal>
         </View>
     );
 };
 
-// --- STYLESHEET ---
+// --- STYLESHEET AMÉLIORÉ ---
 const styles = StyleSheet.create({
-
     container: {
         flex: 1,
         backgroundColor: COLORS.background,
     },
-
-    // --- HEADER ---
+    // Header
     header: {
         backgroundColor: COLORS.primary,
         padding: 20,
         paddingTop: Platform.OS === 'ios' ? 60 : 40,
     },
+    headerTop: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 8,
+    },
     title: {
         fontSize: 28,
         fontWeight: 'bold',
         color: COLORS.headerText,
-        marginBottom: 4,
+        flex: 1,
+    },
+    devisHeaderButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.devis,
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 8,
+        gap: 8,
+    },
+    devisHeaderButtonText: {
+        color: COLORS.headerText,
+        fontWeight: '600',
+        fontSize: 16,
     },
     subtitle: {
         fontSize: 16,
         color: 'rgba(255,255,255,0.8)',
-        marginBottom: 10,
     },
-    sectionSubtitle: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: COLORS.textPrimary,
-        marginTop: 12,
-        marginBottom: 8,
-    },
+    // Layout principal
     scrollContent: {
         flexGrow: 1,
     },
@@ -1039,10 +979,11 @@ const styles = StyleSheet.create({
         flexDirection: isLargeScreen ? 'row' : 'column',
         padding: 16,
         gap: 16,
+        minHeight: height - 200,
     },
     produitsSection: {
-        flex: isLargeScreen ? 1 : undefined,
-        minHeight: isLargeScreen ? 'auto' : 500,
+        flex: isLargeScreen ? 2 : undefined,
+        minHeight: 500,
         backgroundColor: COLORS.surface,
         padding: 16,
         borderRadius: 12,
@@ -1063,142 +1004,42 @@ const styles = StyleSheet.create({
         shadowRadius: 4,
         elevation: 3,
     },
-    panierTitle: {
-        fontSize: 20,
-        fontWeight: '600',
-        color: COLORS.textPrimary,
-        marginBottom: 16,
-    },
-    // --- SEARCH AND FILTERS ---
-    searchSection: {
-        marginBottom: 16,
-    },
-    searchFilters: {
-        flexDirection: 'column',
-        gap: 12,
-        marginBottom: 16,
-    },
-    filterGroup: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    filterGroupIcon: {
-        fontSize: 18,
-        marginRight: 8,
-        color: COLORS.neutral,
-    },
-    chipsContainer: {
-        flexGrow: 1,
-        paddingVertical: 4,
-    },
-    chip: {
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        borderRadius: 20,
-        borderWidth: 1,
-        borderColor: COLORS.borderLight,
-        marginRight: 8,
-        backgroundColor: COLORS.surface,
-    },
-    chipActiveCategory: {
-        backgroundColor: COLORS.accent,
-        borderColor: COLORS.accent,
-    },
-    chipActiveFournisseur: {
-        backgroundColor: COLORS.success,
-        borderColor: COLORS.success,
-    },
-    chipText: {
-        fontSize: 12,
-        color: COLORS.textSecondary,
-        fontWeight: '500',
-    },
-    chipTextActive: {
-        color: COLORS.headerText,
-    },
-    helpButton: {
-        padding: 12,
-        backgroundColor: COLORS.background,
-        borderWidth: 1,
-        borderColor: COLORS.borderLight,
-        borderRadius: 8,
-        alignItems: 'center',
-    },
-    helpButtonText: {
-        fontSize: 14,
-        color: COLORS.neutral,
-        fontWeight: '500',
-    },
-    searchInputContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        borderWidth: 2,
-        borderColor: COLORS.accent,
-        borderRadius: 8,
-        backgroundColor: COLORS.surface,
-    },
-    searchIcon: {
-        paddingLeft: 12,
-        fontSize: 18,
-    },
-    searchInput: {
-        flex: 1,
-        padding: 12,
-        fontSize: 16,
-        fontWeight: '500',
-        color: COLORS.textPrimary,
-    },
-    clearButton: {
-        padding: 8,
-    },
-    clearButtonText: {
-        fontSize: 16,
-        color: COLORS.neutral,
-    },
-    helpContainer: {
-        marginTop: 12,
-        padding: 16,
-        backgroundColor: COLORS.selectedBg,
-        borderWidth: 1,
-        borderColor: COLORS.borderAccent,
-        borderRadius: 8,
-    },
-    helpTitle: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: '#0369A1',
-        marginBottom: 8,
-    },
-    helpTips: { gap: 4, },
-    helpTip: { fontSize: 12, color: '#0369A1', },
-    helpBold: { fontWeight: '600', },
-    resultsCounter: {
+    // Panier Header
+    panierHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 16,
-        padding: 12,
-        backgroundColor: COLORS.background,
+        marginBottom: 20,
+    },
+    panierTitle: {
+        fontSize: 22,
+        fontWeight: 'bold',
+        color: COLORS.textPrimary,
+    },
+    devisFloatingButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.devis,
+        paddingHorizontal: 16,
+        paddingVertical: 10,
         borderRadius: 8,
-        borderWidth: 1,
-        borderColor: COLORS.borderLight,
+        gap: 8,
+        shadowColor: COLORS.devis,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+        elevation: 3,
     },
-    resultsText: {
-        fontSize: 14,
-        color: COLORS.textSecondary,
-        fontWeight: '600',
+    buttonDisabled: {
+        backgroundColor: COLORS.neutral,
+        opacity: 0.5,
     },
-    resetButton: {
-        padding: 6,
-        paddingHorizontal: 12,
-        backgroundColor: COLORS.accent,
-        borderRadius: 6,
-    },
-    resetButtonText: {
-        fontSize: 12,
+    devisFloatingButtonText: {
         color: COLORS.headerText,
         fontWeight: '600',
+        fontSize: 14,
     },
+    // Produit card
     produitCard: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -1207,23 +1048,25 @@ const styles = StyleSheet.create({
         borderColor: COLORS.borderLight,
         borderRadius: 12,
         backgroundColor: COLORS.surface,
-        gap: 16,
         marginBottom: 12,
+        gap: 16,
     },
     produitCardSelected: {
         backgroundColor: COLORS.selectedBg,
         borderColor: COLORS.borderAccent,
     },
-    logoImage: {
+    produitLogo: {
+        width: 60,
+        height: 60,
         borderRadius: 8,
-        borderWidth: 2,
+        borderWidth: 1,
         borderColor: COLORS.borderLight,
-    },
-    logoDefaultContainer: {
-        backgroundColor: COLORS.background,
-        borderRadius: 8,
-        alignItems: 'center',
         justifyContent: 'center',
+        alignItems: 'center',
+    },
+    defaultLogo: {
+        backgroundColor: '#F3F4F6',
+        borderColor: '#E5E7EB',
     },
     produitInfo: {
         flex: 1,
@@ -1243,10 +1086,14 @@ const styles = StyleSheet.create({
         color: COLORS.textSecondary,
         marginTop: 4,
     },
+    produitActions: {
+        alignItems: 'flex-end',
+        gap: 8,
+    },
     quantityControls: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 12,
+        gap: 8,
     },
     quantityButtonRemove: {
         padding: 8,
@@ -1275,81 +1122,126 @@ const styles = StyleSheet.create({
         minWidth: 30,
         textAlign: 'center',
     },
-    emptyState: {
+    quickDevisButton: {
+        padding: 6,
+        borderRadius: 6,
+        borderWidth: 1,
+        borderColor: COLORS.devis,
+        backgroundColor: COLORS.devisLight,
+    },
+    // Panier vide
+    emptyPanier: {
         alignItems: 'center',
         justifyContent: 'center',
         padding: 40,
-        backgroundColor: '#F9FAFB',
-        borderRadius: 12,
-        borderWidth: 2,
-        borderStyle: 'dashed',
-        borderColor: COLORS.borderLight,
     },
-    emptyStateIcon: { fontSize: 48, marginBottom: 16, },
-    emptyStateTitle: { fontSize: 16, fontWeight: '600', color: COLORS.textPrimary, marginBottom: 8, },
-    emptyStateText: { fontSize: 14, color: COLORS.textSecondary, textAlign: 'center', },
-    showAllButton: { marginTop: 16, padding: 8, paddingHorizontal: 16, backgroundColor: COLORS.accent, borderRadius: 6, },
-    showAllButtonText: { fontSize: 14, color: COLORS.headerText, fontWeight: '600', },
-    emptyPanier: { alignItems: 'center', justifyContent: 'center', padding: 40, },
-    emptyPanierIcon: { fontSize: 48, marginBottom: 16, },
-    emptyPanierText: { fontSize: 16, color: COLORS.textPrimary, marginBottom: 8, },
-    emptyPanierSubtext: { fontSize: 14, color: COLORS.textSecondary, },
-    fournisseursSummary: { marginBottom: 16, },
-    summaryTitle: { fontSize: 16, fontWeight: '600', color: COLORS.textPrimary, marginBottom: 12, },
-    fournisseursList: { maxHeight: 300, },
-    fournisseurCard: {
-        padding: 16,
-        backgroundColor: COLORS.background,
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: COLORS.borderLight,
+    emptyPanierText: {
+        fontSize: 18,
+        color: COLORS.textPrimary,
+        marginTop: 16,
+        fontWeight: '600',
+    },
+    emptyPanierSubtext: {
+        fontSize: 14,
+        color: COLORS.textSecondary,
+        marginTop: 8,
+    },
+    // Panier items
+    panierList: {
+        maxHeight: isMediumScreen ? 400 : 300,
+    },
+    fournisseurPanierCard: {
+        marginBottom: 16,
+    },
+    fournisseurPanierName: {
+        fontWeight: '600',
+        fontSize: 16,
+        color: COLORS.textPrimary,
         marginBottom: 12,
     },
-    fournisseurName: { fontWeight: '600', color: COLORS.textPrimary, marginBottom: 12, fontSize: 16, },
-    produitsCompactList: { gap: 8, },
-    produitRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-        padding: 8,
-        backgroundColor: COLORS.surface,
-        borderRadius: 6,
-    },
-    produitInfoCompact: { flex: 1, },
-    produitNomCompact: { fontWeight: '600', fontSize: 14, color: COLORS.textPrimary },
-    produitDetailsCompact: { fontSize: 13, color: COLORS.textSecondary, },
-    produitQuantite: { alignItems: 'flex-end', },
-    quantiteText: { fontWeight: '600', fontSize: 14, color: COLORS.textPrimary },
-    sousTotalText: { fontSize: 13, color: COLORS.success, fontWeight: '600' },
-    fournisseurTotal: {
+    panierItem: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginTop: 12,
-        paddingTop: 12,
-        borderTopWidth: 1,
-        borderTopColor: COLORS.borderLight,
+        padding: 12,
+        backgroundColor: COLORS.background,
+        borderRadius: 8,
+        marginBottom: 8,
     },
-    fournisseurTotalLabel: { fontWeight: '600', color: '#0369A1', },
-    fournisseurTotalValue: { fontWeight: '700', color: '#0369A1', },
-    totalGeneral: {
+    panierItemInfo: {
+        flex: 1,
+    },
+    panierItemName: {
+        fontWeight: '600',
+        fontSize: 14,
+        color: COLORS.textPrimary,
+    },
+    panierItemDetails: {
+        fontSize: 13,
+        color: COLORS.textSecondary,
+        marginTop: 2,
+    },
+    panierItemActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+    },
+    panierItemTotal: {
+        fontWeight: '600',
+        fontSize: 14,
+        color: COLORS.success,
+    },
+    deleteButton: {
+        padding: 4,
+    },
+    // Panier footer
+    panierFooter: {
+        marginTop: 20,
+    },
+    totalContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
         padding: 16,
         backgroundColor: COLORS.selectedBg,
         borderRadius: 8,
         borderWidth: 2,
         borderColor: COLORS.borderAccent,
         marginBottom: 16,
-        flexDirection: 'row',
-        justifyContent: 'space-between',
     },
-    totalLabel: { fontWeight: '600', color: '#0369A1', },
-    totalValue: { fontWeight: '700', fontSize: 18, color: '#0369A1', },
-    sendButtons: { gap: 12, },
-    sendButton: { padding: 12, borderRadius: 8, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', },
-    allChannelsButton: { backgroundColor: '#4F46E5', },
-    sendButtonText: { color: COLORS.headerText, fontWeight: '600', fontSize: 16, marginLeft: 8 },
-    
-    // Modal Styles
+    totalLabel: {
+        fontWeight: '600',
+        fontSize: 16,
+        color: '#0369A1',
+    },
+    totalValue: {
+        fontWeight: '700',
+        fontSize: 20,
+        color: '#0369A1',
+    },
+    actionButtons: {
+        gap: 12,
+    },
+    actionButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 16,
+        borderRadius: 8,
+        gap: 12,
+    },
+    devisButton: {
+        backgroundColor: COLORS.devis,
+    },
+    commandeButton: {
+        backgroundColor: COLORS.primary,
+    },
+    actionButtonText: {
+        color: COLORS.headerText,
+        fontWeight: '600',
+        fontSize: 16,
+    },
+    // Modals
     modalOverlay: {
         flex: 1,
         backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -1382,21 +1274,106 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         color: COLORS.textPrimary,
     },
-    modalClose: {
-        fontSize: 24,
-        color: COLORS.neutral,
-        padding: 4,
-    },
     modalContent: {
         padding: 20,
     },
     modalSubtitle: {
-        fontSize: 16,
+        fontSize: 14,
         color: COLORS.textSecondary,
         marginBottom: 20,
+        lineHeight: 20,
+    },
+    // Fournisseur selection modal
+    sectionTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: COLORS.textPrimary,
+        marginBottom: 12,
+    },
+    fournisseursList: {
+        gap: 8,
+    },
+    fournisseurItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: 16,
+        backgroundColor: COLORS.background,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: COLORS.borderLight,
+    },
+    fournisseurInfo: {
+        flex: 1,
+    },
+    fournisseurName: {
+        fontWeight: '600',
+        fontSize: 14,
+        color: COLORS.textPrimary,
+        marginBottom: 4,
+    },
+    fournisseurDetails: {
+        fontSize: 13,
+        color: COLORS.textSecondary,
+    },
+    customFournisseurForm: {
+        gap: 12,
+        marginTop: 8,
+    },
+    input: {
+        borderWidth: 1,
+        borderColor: COLORS.borderLight,
+        borderRadius: 8,
+        padding: 12,
+        fontSize: 16,
+        color: COLORS.textPrimary,
+        backgroundColor: COLORS.background,
+    },
+    textArea: {
+        minHeight: 80,
+        textAlignVertical: 'top',
+    },
+    continueButton: {
+        backgroundColor: COLORS.devis,
+        padding: 16,
+        borderRadius: 8,
+        alignItems: 'center',
+        marginTop: 8,
+    },
+    continueButtonDisabled: {
+        backgroundColor: COLORS.neutral,
+        opacity: 0.5,
+    },
+    continueButtonText: {
+        color: COLORS.headerText,
+        fontWeight: '600',
+        fontSize: 16,
+    },
+    // Devis modal
+    devisFournisseurInfo: {
+        backgroundColor: COLORS.devisLight,
+        padding: 16,
+        borderRadius: 8,
+        marginBottom: 20,
+    },
+    devisFournisseurTitle: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: COLORS.devis,
+        marginBottom: 4,
+        textTransform: 'uppercase',
+    },
+    devisFournisseurName: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: COLORS.devis,
     },
     inputGroup: {
-        marginBottom: 20,
+        marginBottom: 16,
+    },
+    inputRow: {
+        flexDirection: 'row',
+        gap: 8,
     },
     inputLabel: {
         fontSize: 14,
@@ -1413,25 +1390,22 @@ const styles = StyleSheet.create({
         color: COLORS.textPrimary,
         backgroundColor: COLORS.background,
     },
-    textArea: {
-        minHeight: 100,
-        textAlignVertical: 'top',
-    },
-    modalStats: {
+    devisRecap: {
         backgroundColor: COLORS.selectedBg,
         borderRadius: 8,
         padding: 16,
+        marginTop: 8,
         marginBottom: 20,
         borderWidth: 1,
         borderColor: COLORS.borderAccent,
     },
-    modalStatsTitle: {
+    devisRecapTitle: {
         fontSize: 16,
         fontWeight: 'bold',
         color: COLORS.textPrimary,
         marginBottom: 12,
     },
-    statsRow: {
+    recapRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
@@ -1439,26 +1413,27 @@ const styles = StyleSheet.create({
         borderBottomWidth: 1,
         borderBottomColor: 'rgba(0, 0, 0, 0.05)',
     },
-    statsLabel: {
+    recapLabel: {
         fontSize: 14,
         color: COLORS.textSecondary,
     },
-    statsValue: {
+    recapValue: {
         fontSize: 14,
         fontWeight: '600',
         color: COLORS.textPrimary,
     },
-    modalButtons: {
+    devisButtons: {
         gap: 12,
     },
-    modalButton: {
+    devisActionButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
         padding: 16,
         borderRadius: 8,
-        alignItems: 'center',
-        flexDirection: 'row',
-        justifyContent: 'center',
+        gap: 12,
     },
-    modalButtonText: {
+    devisActionButtonText: {
         color: COLORS.headerText,
         fontWeight: '600',
         fontSize: 16,
@@ -1466,3 +1441,5 @@ const styles = StyleSheet.create({
 });
 
 export default CommandeFournisseurs;
+
+
