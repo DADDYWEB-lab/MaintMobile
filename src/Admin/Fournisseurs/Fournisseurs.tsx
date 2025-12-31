@@ -1057,6 +1057,8 @@ const GestionFournisseurs = ({ navigation }: any) => {
                 </View>
               </View>
 
+
+
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Catégorie *</Text>
                 <ScrollView style={styles.categoriesGrid} nestedScrollEnabled={true}>
@@ -1068,7 +1070,6 @@ const GestionFournisseurs = ({ navigation }: any) => {
                         { borderColor: categorie.couleur },
                         fournisseurForm.categorieId === categorie.id && { backgroundColor: categorie.couleur + '20' }
                       ]}
-
                       onPress={() => setFournisseurForm(prev => ({ ...prev, categorieId: categorie.id }))} >
 
                       <Text style={styles.categorieIcon}>{categorie.icone}</Text>
@@ -1077,39 +1078,21 @@ const GestionFournisseurs = ({ navigation }: any) => {
                       {fournisseurForm.categorieId === categorie.id && (
                         <Text style={[styles.checkmark, { color: categorie.couleur }]}>✓</Text>
 
-
-
-                      )}
+                     
+                     
+                     
+                        )}
 
 
                     </TouchableOpacity>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
                   ))}
 
                 </ScrollView>
               </View>
+
+
 
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Description</Text>
@@ -1148,6 +1131,9 @@ const GestionFournisseurs = ({ navigation }: any) => {
                   {isSubmitting ? '...' : (selectedFournisseur ? 'Modifier' : 'Créer')}
                 </Text>
               </TouchableOpacity>
+
+
+              
             </View>
           </View>
         </View>

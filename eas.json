@@ -1,3 +1,5 @@
+
+
 {
   "cli": {
     "version": ">= 16.28.0",
@@ -9,31 +11,27 @@
       "developmentClient": true,
       "distribution": "internal",
       "channel": "development"
-    },
-
-
+    }
+    ,
 
     "preview": {
       "distribution": "internal",
       "channel": "preview"
-    },
+    }
+    , 
 
-
-    
     "production": {
       "autoIncrement": true,
       "channel": "production"
     }
 
 
-  },
-
-
-
-  
+  }
+  ,
   "submit": {
     "production": {}
   }
 
+                                  
 }
  

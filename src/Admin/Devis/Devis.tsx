@@ -876,15 +876,19 @@ const CommandeFournisseurs = ({ navigation }: any) => {
                             {/* Récapitulatif */}
                             <View style={styles.devisRecap}>
                                 <Text style={styles.devisRecapTitle}>Récapitulatif</Text>
+
                                 <View style={styles.recapRow}>
                                     <Text style={styles.recapLabel}>Produits:</Text>
                                     <Text style={styles.recapValue}>{Object.keys(panier).length}</Text>
                                 </View>
+
                                 <View style={styles.recapRow}>
                                     <Text style={styles.recapLabel}>Total estimé:</Text>
                                     <Text style={styles.recapValue}>{calculerTotal().toFixed(2)}€</Text>
                                 </View>
+
                             </View>
+
 
                             {/* Boutons d'envoi */}
                             <View style={styles.devisButtons}>
@@ -899,27 +903,33 @@ const CommandeFournisseurs = ({ navigation }: any) => {
                                         <>
                                             <Icon name="email-outline" size={20} color={COLORS.headerText} />
                                             <Text style={styles.devisActionButtonText}>Envoyer par Email</Text>
-                                        </>
-                                    )}
+                                        </> 
+                                      )}
+
                                 </TouchableOpacity>
                                 
                                 {selectedFournisseurForDevis && selectedFournisseurForDevis.telephone && (
                                     <TouchableOpacity 
                                         style={[styles.devisActionButton, { backgroundColor: COLORS.whatsapp }]}
                                         onPress={() => envoyerDevis('whatsapp')}
-                                        disabled={isSubmitting}
-                                    >
+                                        disabled={isSubmitting}  >
+
                                         <Icon name="whatsapp" size={20} color={COLORS.headerText} />
+                                      
                                         <Text style={styles.devisActionButtonText}>Envoyer par WhatsApp</Text>
+
                                     </TouchableOpacity>
                                 )}
                                 
                                 <TouchableOpacity 
                                     style={[styles.devisActionButton, { backgroundColor: COLORS.neutral }]}
-                                    onPress={() => setShowDevisModal(false)}
-                                >
+                                    onPress={() => setShowDevisModal(false)} >
+                                        
                                     <Text style={styles.devisActionButtonText}>Annuler</Text>
+
+
                                 </TouchableOpacity>
+
                             </View>
                         </ScrollView>
                     </KeyboardAvoidingView>

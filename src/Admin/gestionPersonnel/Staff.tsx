@@ -39,7 +39,7 @@ import {
   Star,
   Calendar,
 } from 'lucide-react-native';
-
+import ScreenHeader from '../Components/ScreenHeader'
 const { width } = Dimensions.get('window');
 
 const StaffScreen = ({ navigation }) => {
@@ -334,20 +334,15 @@ const StaffScreen = ({ navigation }) => {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerTitleContainer}>
-          <Text style={styles.headerTitle}>Gestion du Personnel</Text>
-          <Text style={styles.headerSubtitle}>
-            {staffList.length} membre{staffList.length > 1 ? 's' : ''} au total
-          </Text>
-        </View>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => navigation.navigate('AddStaff')}
-        >
-          <Plus color="#fff" size={24} />
-        </TouchableOpacity>
-      </View>
+    <ScreenHeader 
+        title="Gestion du Personnel"
+        subtitle="Gestion du staff"
+        backgroundColor="#3B82F6"
+        onBackPress={() => navigation.goBack()}
+        rightButtons={[
+          { label: "+ Nouvelle", onPress: () => navigation.navigate('AddStaff') }
+        ]}
+      />
 
       {/* Barre de recherche et filtres */}
       <View style={styles.searchSection}>
@@ -488,168 +483,7 @@ const styles = StyleSheet.create({
     color: '#64748b',
     fontWeight: '500',
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-    shadowColor: '#000',
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    
-
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
- 
-    backgroundColor: '#3B82F6',
-    paddingTop: 50,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
-  },
-
-  headerTitleContainer: {
-    flex: 1,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#1e293b',
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: '#64748b',
-    marginTop: 4,
-  },
-  addButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#667eea',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#667eea',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
   searchSection: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -688,26 +522,32 @@ const styles = StyleSheet.create({
     borderColor: '#e2e8f0',
   },
   filtersContainer: {
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-  },
-  filtersContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 8,
-  },
-  filterChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#f8fafc',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    marginRight: 8,
-  },
+  backgroundColor: '#fff',
+  borderBottomWidth: 1,
+  borderBottomColor: '#e2e8f0',
+  // Ajoutez une hauteur fixe ou min-height si nécessaire
+  height: 70, 
+},
+ filtersContent: {
+  paddingHorizontal: 16,
+  alignItems: 'center', // Aligne les puces verticalement au centre
+  gap: 8,
+  // Très important : permet au contenu de s'étendre au-delà de l'écran
+  flexDirection: 'row', 
+},
+filterChip: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  paddingHorizontal: 16,
+  paddingVertical: 10, // Augmentez un peu pour donner de l'espace
+  borderRadius: 20,
+  backgroundColor: '#f8fafc',
+  borderWidth: 1,
+  borderColor: '#e2e8f0',
+  marginRight: 8,
+  // Empêche le bouton de s'écraser
+  minWidth: 80, 
+},
   filterChipActive: {
     backgroundColor: '#667eea',
     borderColor: '#667eea',

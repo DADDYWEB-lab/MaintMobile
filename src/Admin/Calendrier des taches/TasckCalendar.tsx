@@ -17,6 +17,9 @@ import {
 } from 'react-native';
 import { collection, query, onSnapshot, orderBy, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../../../firebaseConfig';
+import ScreenHeader from '../Components/ScreenHeader'
+
+
 
 const { width } = Dimensions.get('window');
 
@@ -296,13 +299,18 @@ const TaskCalendar = ({ navigation }: { navigation: any }) => {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Text style={styles.backButtonText}>← Retour</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Tâches & Planning</Text>
-      </View>
+      
+
+
+      <ScreenHeader 
+  title="Tâches & Planning"
+  subtitle="Gestion des Tâches"
+  backgroundColor="#3B82F6"
+  onBackPress={() => navigation.goBack()}
+  rightButtons={[
+    { label: "+ Nouvelle", onPress: () => handleAddTask() }
+  ]}
+/>
 
       {/* Tabs Navigation */}
       <View style={styles.tabsContainer}>
@@ -479,16 +487,7 @@ const TaskCalendar = ({ navigation }: { navigation: any }) => {
         </ScrollView>
       )}
 
-      {/* Bouton flottant pour ajouter une tâche */}
-      <TouchableOpacity 
-        style={styles.fab}
-        onPress={handleAddTask}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.fabIcon}>+</Text>
-        <Text style={styles.fabText}>Nouvelle tâche</Text>
-      </TouchableOpacity>
-
+     
       {/* Modal détails de la tâche */}
       <Modal
         visible={showTaskModal}

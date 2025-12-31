@@ -16,6 +16,7 @@ import {
   Alert,
   Dimensions,
   Platform,
+  Animated,
 } from "react-native";
 import {
   collection,
@@ -23,11 +24,14 @@ import {
   onSnapshot,
   updateDoc,
   doc,
+  addDoc,
 } from "firebase/firestore";
-import { getAuth } from "firebase/auth"; // Pour identifier l'admin connecté
-import { db } from "../../../firebaseConfig";
 
+import { getAuth } from "firebase/auth";
+import { db } from "../../../firebaseConfig";
+import ScreenHeader from '../Components/ScreenHeader'
 const { width } = Dimensions.get("window");
+import AddReclamationModal from './AddReclamationModal';
 
 const AdminReclamations = ({ navigation }: any) => {
   const auth = getAuth();
@@ -38,26 +42,38 @@ const AdminReclamations = ({ navigation }: any) => {
   const [agents, setAgents] = useState([]);
 
   // Navigation et Vues
-  const [currentView, setCurrentView] = useState("history"); // 'list' | 'history'
-  const [filterMode, setFilterMode] = useState("all"); // 'all' (Tout le monde) | 'mine' (Mes réclamations)
+  const [currentView, setCurrentView] = useState("list");
+  const [filterMode, setFilterMode] = useState("all");
 
   // Modales
   const [selectedReclamation, setSelectedReclamation] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
-  const [drillDownData, setDrillDownData] = useState(null); // Pour la vue détaillée agent
+  const [drillDownData, setDrillDownData] = useState(null);
   const [showDrillDownModal, setShowDrillDownModal] = useState(false);
-
   const [refreshing, setRefreshing] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
 
-  // Pagination & Filtres
+  // Filtres
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+  
   const [filters, setFilters] = useState({
     status: "",
     urgency: "",
     searchTerm: "",
+    category: "",
+    dateFrom: "",
+    dateTo: "",
   });
+
+  // Filtre spécifique pour la vue "Par Agent"
+  const [agentSearchTerm, setAgentSearchTerm] = useState("");
+  const [showAgentDropdown, setShowAgentDropdown] = useState(false);
+  const [selectedAgentFilter, setSelectedAgentFilter] = useState(null);
+
+  // Animation pour les filtres
+  const [filterAnimation] = useState(new Animated.Value(0));
 
   // Stats globales
   const [stats, setStats] = useState({
@@ -91,8 +107,21 @@ const AdminReclamations = ({ navigation }: any) => {
     return () => unsubscribe();
   }, []);
 
-  // --- LOGIQUE MÉTIER ---
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filters, filterMode]);
 
+  // Animation des filtres
+  useEffect(() => {
+    Animated.timing(filterAnimation, {
+      toValue: showAdvancedFilters ? 1 : 0,
+      duration: 300,
+      useNativeDriver: false,
+    }).start();
+  }, [showAdvancedFilters]);
+
+  // --- LOGIQUE MÉTIER ---
   const calculateStats = useCallback((data) => {
     const now = new Date();
     const stats = { total: data.length, enRetard: 0, terminees: 0, enCours: 0 };
@@ -105,6 +134,7 @@ const AdminReclamations = ({ navigation }: any) => {
         if (isEnRetard(rec)) stats.enRetard++;
       }
     });
+
     setStats(stats);
   }, []);
 
@@ -132,7 +162,75 @@ const AdminReclamations = ({ navigation }: any) => {
     return diff > getDelaiByUrgency(reclamation.urgency);
   }, []);
 
-  // FILTRAGE PRINCIPAL
+  // --- FONCTIONS FILTRES AMÉLIORÉES ---
+  const resetFilters = () => {
+    setFilters({
+      status: "",
+      urgency: "",
+      searchTerm: "",
+      category: "",
+      dateFrom: "",
+      dateTo: "",
+    });
+    setCurrentPage(1);
+  };
+
+  const resetAgentFilter = () => {
+    setAgentSearchTerm("");
+    setSelectedAgentFilter(null);
+  };
+
+  const updateFilter = (key, value) => {
+    setFilters(prev => ({ ...prev, [key]: value }));
+  };
+
+  const hasActiveFilters = useMemo(() => {
+    return Object.values(filters).some(value => value !== "");
+  }, [filters]);
+
+  const activeFiltersCount = useMemo(() => {
+    return Object.values(filters).filter(value => value !== "").length;
+  }, [filters]);
+
+  // Filtrage des agents pour la vue "Par Agent"
+  const filteredAgents = useMemo(() => {
+    if (!agentSearchTerm && !selectedAgentFilter) {
+      return agents;
+    }
+
+    return agents.filter((agent) => {
+      // Si un agent est sélectionné dans la dropdown, afficher seulement celui-là
+      if (selectedAgentFilter) {
+        return agent.uid === selectedAgentFilter.uid;
+      }
+
+      // Sinon, filtrer par le terme de recherche
+      if (agentSearchTerm) {
+        const searchLower = agentSearchTerm.toLowerCase();
+        return (
+          agent.name?.toLowerCase().includes(searchLower) ||
+          agent.specialite?.toLowerCase().includes(searchLower) ||
+          agent.role?.toLowerCase().includes(searchLower)
+        );
+      }
+
+      return true;
+    });
+  }, [agents, agentSearchTerm, selectedAgentFilter]);
+
+  // Agents suggérés pour la dropdown
+  const suggestedAgents = useMemo(() => {
+    if (!agentSearchTerm || selectedAgentFilter) return [];
+    
+    const searchLower = agentSearchTerm.toLowerCase();
+    return agents.filter((agent) => 
+      agent.name?.toLowerCase().includes(searchLower) ||
+      agent.specialite?.toLowerCase().includes(searchLower) ||
+      agent.role?.toLowerCase().includes(searchLower)
+    ).slice(0, 5); // Limiter à 5 suggestions
+  }, [agents, agentSearchTerm, selectedAgentFilter]);
+
+  // FILTRAGE PRINCIPAL AMÉLIORÉ
   const filteredReclamations = useMemo(() => {
     return reclamations.filter((rec) => {
       // 1. Filtre "Mes Réclamations" vs "Toutes"
@@ -140,17 +238,39 @@ const AdminReclamations = ({ navigation }: any) => {
         if (rec.agentAssigne?.uid !== currentUser?.uid) return false;
       }
 
-      // 2. Filtres UI (Recherche, Statut, Urgence)
+      // 2. Filtres de base
       if (filters.status && rec.status !== filters.status) return false;
       if (filters.urgency && rec.urgency !== filters.urgency) return false;
+      
+      // 3. Filtre par catégorie
+      if (filters.category && rec.categorie !== filters.category) return false;
+      
+      // 4. Filtre par date (amélioré)
+      if (filters.dateFrom && rec.createdAt) {
+        const recDate = new Date(rec.createdAt).setHours(0, 0, 0, 0);
+        const filterDate = new Date(filters.dateFrom).setHours(0, 0, 0, 0);
+        if (recDate < filterDate) return false;
+      }
+      
+      if (filters.dateTo && rec.createdAt) {
+        const recDate = new Date(rec.createdAt).setHours(23, 59, 59, 999);
+        const filterDate = new Date(filters.dateTo).setHours(23, 59, 59, 999);
+        if (recDate > filterDate) return false;
+      }
+      
+      // 5. Recherche textuelle améliorée
       if (filters.searchTerm) {
-        const term = filters.searchTerm.toLowerCase();
-        return (
-          rec.roomNumber?.toLowerCase().includes(term) ||
-          rec.problem?.toLowerCase().includes(term) ||
-          rec.categorie?.toLowerCase().includes(term) ||
-          rec.agentAssigne?.nom?.toLowerCase().includes(term)
-        );
+        const term = filters.searchTerm.toLowerCase().trim();
+        const searchFields = [
+          rec.roomNumber?.toLowerCase(),
+          rec.problem?.toLowerCase(),
+          rec.categorie?.toLowerCase(),
+          rec.agentAssigne?.nom?.toLowerCase(),
+          rec.description?.toLowerCase(),
+          rec.status?.toLowerCase(),
+        ].filter(Boolean);
+        
+        return searchFields.some(field => field.includes(term));
       }
       return true;
     });
@@ -164,7 +284,6 @@ const AdminReclamations = ({ navigation }: any) => {
   const totalPages = Math.ceil(filteredReclamations.length / itemsPerPage);
 
   // --- STATS AGENT & DRILL-DOWN ---
-
   const getAgentStats = useCallback(
     (agentUid) => {
       const agentRecs = reclamations.filter(
@@ -211,7 +330,6 @@ const AdminReclamations = ({ navigation }: any) => {
   };
 
   // --- ACTIONS ---
-
   const handleStatusChange = async (recId, newStatus) => {
     try {
       await updateDoc(doc(db, "reclamations", recId), {
@@ -253,6 +371,7 @@ const AdminReclamations = ({ navigation }: any) => {
       bas: "#2563EB",
       high: "#DC2626",
     }[u] || "#6B7280");
+
   const getStatusColor = (s) =>
     ({
       "en attente": "#9CA3AF",
@@ -263,12 +382,11 @@ const AdminReclamations = ({ navigation }: any) => {
     }[s] || "#9CA3AF");
 
   // --- COMPOSANTS INTERNES ---
-
-  const StatCard = ({ value, label, color }) => (
-    <View style={styles.statCard}>
+  const StatCard = ({ value, label, color, onPress }) => (
+    <TouchableOpacity style={styles.statCard} onPress={onPress} activeOpacity={0.7}>
       <Text style={[styles.statValue, color && { color }]}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
-    </View>
+    </TouchableOpacity>
   );
 
   const UrgencyBadge = ({ urgency }) => (
@@ -285,12 +403,278 @@ const AdminReclamations = ({ navigation }: any) => {
         ]}
       />
       <Text style={[styles.urgencyText, { color: getUrgencyColor(urgency) }]}>
-        {urgency}
+        {urgency?.replace('_', ' ')}
       </Text>
     </View>
   );
 
-  // Nouvelle version AgentCard avec zones cliquables
+  // --- COMPOSANTS FILTRES AMÉLIORÉS ---
+  const SimpleSearchBar = () => (
+    <View style={styles.searchContainer}>
+      <View style={styles.searchInputContainer}>
+        <Text style={styles.searchIcon}>🔍</Text>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Rechercher par chambre, problème, agent..."
+          placeholderTextColor="#94A3B8"
+          value={filters.searchTerm}
+          onChangeText={(text) => updateFilter('searchTerm', text)}
+        />
+        {filters.searchTerm ? (
+          <TouchableOpacity onPress={() => updateFilter('searchTerm', "")}>
+            <Text style={styles.clearIcon}>✕</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+      
+      <TouchableOpacity 
+        style={[
+          styles.filterButton,
+          hasActiveFilters && styles.filterButtonActive
+        ]}
+        onPress={() => setShowAdvancedFilters(!showAdvancedFilters)}
+      >
+        <Text style={styles.filterButtonText}>
+          {showAdvancedFilters ? "▼" : "▶"} Filtres
+        </Text>
+        {activeFiltersCount > 0 && (
+          <View style={styles.filterBadge}>
+            <Text style={styles.filterBadgeText}>{activeFiltersCount}</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+    </View>
+  );
+
+  // Nouveau composant de recherche pour les agents
+  const AgentSearchBar = () => (
+    <View style={styles.agentSearchContainer}>
+      <View style={styles.agentSearchWrapper}>
+        <View style={styles.searchInputContainer}>
+          <Text style={styles.searchIcon}>👤</Text>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Rechercher un agent par nom..."
+            placeholderTextColor="#94A3B8"
+            value={agentSearchTerm}
+            onChangeText={(text) => {
+              setAgentSearchTerm(text);
+              setSelectedAgentFilter(null);
+              setShowAgentDropdown(true);
+            }}
+            onFocus={() => setShowAgentDropdown(true)}
+          />
+          {(agentSearchTerm || selectedAgentFilter) && (
+            <TouchableOpacity onPress={resetAgentFilter}>
+              <Text style={styles.clearIcon}>✕</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {selectedAgentFilter && (
+          <View style={styles.selectedAgentBadge}>
+            <Text style={styles.selectedAgentText}>
+              ✓ {selectedAgentFilter.name}
+            </Text>
+          </View>
+        )}
+
+        {/* Dropdown de suggestions */}
+        {showAgentDropdown && suggestedAgents.length > 0 && !selectedAgentFilter && (
+          <View style={styles.agentDropdown}>
+            <ScrollView style={styles.agentDropdownScroll} nestedScrollEnabled>
+              {suggestedAgents.map((agent) => (
+                <TouchableOpacity
+                  key={agent.id}
+                  style={styles.agentDropdownItem}
+                  onPress={() => {
+                    setSelectedAgentFilter(agent);
+                    setAgentSearchTerm(agent.name);
+                    setShowAgentDropdown(false);
+                  }}
+                >
+                  <View style={styles.agentDropdownInfo}>
+                    <Text style={styles.agentDropdownName}>{agent.name}</Text>
+                    <Text style={styles.agentDropdownRole}>
+                      {agent.specialite || agent.role}
+                    </Text>
+                  </View>
+                  <Text style={styles.agentDropdownArrow}>→</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+      </View>
+
+      {(agentSearchTerm || selectedAgentFilter) && (
+        <View style={styles.agentFilterInfo}>
+          <Text style={styles.agentFilterText}>
+            {filteredAgents.length} agent{filteredAgents.length > 1 ? 's' : ''} trouvé{filteredAgents.length > 1 ? 's' : ''}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+
+ 
+  const ActiveFilterChips = () => {
+    if (!hasActiveFilters) return null;
+    
+    const chips = [];
+    
+    if (filters.status) chips.push({ key: 'status', label: `Statut: ${filters.status}`, value: filters.status });
+    if (filters.urgency) chips.push({ key: 'urgency', label: `Urgence: ${filters.urgency.replace('_', ' ')}`, value: filters.urgency });
+    if (filters.category) chips.push({ key: 'category', label: `Catégorie: ${filters.category}`, value: filters.category });
+    if (filters.dateFrom) chips.push({ key: 'dateFrom', label: `Depuis: ${new Date(filters.dateFrom).toLocaleDateString()}`, value: filters.dateFrom });
+    if (filters.dateTo) chips.push({ key: 'dateTo', label: `Jusqu'à: ${new Date(filters.dateTo).toLocaleDateString()}`, value: filters.dateTo });
+    
+    return (
+      <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.activeChipsContainer}
+      >
+        {chips.map((chip) => (
+          <View key={chip.key} style={styles.activeChip}>
+            <Text style={styles.activeChipText}>{chip.label}</Text>
+            <TouchableOpacity onPress={() => updateFilter(chip.key, "")}>
+              <Text style={styles.activeChipClose}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        ))}
+        <TouchableOpacity onPress={resetFilters} style={styles.resetChip}>
+          <Text style={styles.resetChipText}>🔄 Réinitialiser tout</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    );
+  };
+
+  const AdvancedFilters = () => {
+    const filterHeight = filterAnimation.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0, 400],
+    });
+
+    return (
+      <Animated.View style={[styles.advancedFiltersContainer, { height: filterHeight, overflow: 'hidden' }]}>
+        <ScrollView showsVerticalScrollIndicator={false}>
+          {/* Filtre par statut */}
+          <View style={styles.filterGroup}>
+            <Text style={styles.filterLabel}>📊 STATUT</Text>
+            <View style={styles.filterChips}>
+              {["", "en attente", "assigné", "en cours", "résolu", "clôturé"].map((status) => (
+                <TouchableOpacity
+                  key={status || "all"}
+                  style={[
+                    styles.filterChip,
+                    filters.status === status && styles.filterChipActive,
+                    filters.status === status && { borderColor: getStatusColor(status) }
+                  ]}
+                  onPress={() => updateFilter('status', status)}
+                >
+                  <Text style={[
+                    styles.filterChipText,
+                    filters.status === status && styles.filterChipTextActive
+                  ]}>
+                    {status || "Tous"}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+          
+          {/* Filtre par urgence */}
+          <View style={styles.filterGroup}>
+            <Text style={styles.filterLabel}>⚡ URGENCE</Text>
+            <View style={styles.filterChips}>
+              {["", "tres_urgent", "urgent", "moyen", "bas"].map((urgency) => (
+                <TouchableOpacity
+                  key={urgency || "all"}
+                  style={[
+                    styles.filterChip,
+                    filters.urgency === urgency && styles.filterChipActive,
+                    filters.urgency === urgency && urgency && { 
+                      borderColor: getUrgencyColor(urgency),
+                      backgroundColor: getUrgencyColor(urgency) + '15'
+                    }
+                  ]}
+                  onPress={() => updateFilter('urgency', urgency)}
+                >
+                  <View style={styles.filterChipContent}>
+                    {urgency && (
+                      <View style={[
+                        styles.urgencyDotSmall,
+                        { backgroundColor: getUrgencyColor(urgency) }
+                      ]} />
+                    )}
+                    <Text style={[
+                      styles.filterChipText,
+                      filters.urgency === urgency && styles.filterChipTextActive
+                    ]}>
+                      {urgency ? urgency.replace("_", " ") : "Tous"}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Boutons d'action des filtres */}
+          <View style={styles.filterActions}>
+            <TouchableOpacity 
+              style={styles.resetButton}
+              onPress={resetFilters}
+            >
+              <Text style={styles.resetButtonText}>🔄 Réinitialiser</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.applyButton}
+              onPress={() => setShowAdvancedFilters(false)}
+            >
+              <Text style={styles.applyButtonText}>✓ Appliquer ({filteredReclamations.length})</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </Animated.View>
+    );
+  };
+
+  // Pagination améliorée
+  const PaginationControls = () => {
+    if (totalPages <= 1) return null;
+
+    return (
+      <View style={styles.paginationContainer}>
+        <TouchableOpacity
+          style={[styles.paginationButton, currentPage === 1 && styles.paginationButtonDisabled]}
+          onPress={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+          disabled={currentPage === 1}
+        >
+          <Text style={styles.paginationButtonText}>◀</Text>
+        </TouchableOpacity>
+
+        <View style={styles.paginationInfo}>
+          <Text style={styles.paginationText}>
+            Page {currentPage} / {totalPages}
+          </Text>
+          <Text style={styles.paginationSubtext}>
+            {filteredReclamations.length} résultat{filteredReclamations.length > 1 ? 's' : ''}
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          style={[styles.paginationButton, currentPage === totalPages && styles.paginationButtonDisabled]}
+          onPress={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+          disabled={currentPage === totalPages}
+        >
+          <Text style={styles.paginationButtonText}>▶</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
   const AgentCard = ({ agent }) => {
     const stats = getAgentStats(agent.uid);
     if (stats.total === 0) return null;
@@ -298,8 +682,14 @@ const AdminReclamations = ({ navigation }: any) => {
     return (
       <View style={styles.agentCard}>
         <View style={styles.agentHeader}>
-          <Text style={styles.agentName}>{agent.name}</Text>
-          <Text style={styles.agentRole}>{agent.specialite || agent.role}</Text>
+          <View>
+            <Text style={styles.agentName}>{agent.name}</Text>
+            <Text style={styles.agentRole}>{agent.specialite || agent.role}</Text>
+          </View>
+          <View style={styles.agentSuccessRate}>
+            <Text style={styles.agentSuccessValue}>{stats.tauxReussite}%</Text>
+            <Text style={styles.agentSuccessLabel}>Taux de réussite</Text>
+          </View>
         </View>
 
         <View style={styles.agentStatsGrid}>
@@ -307,30 +697,30 @@ const AdminReclamations = ({ navigation }: any) => {
             style={[styles.agentStatItem, { backgroundColor: "#EEF2FF" }]}
             onPress={() => handleAgentStatClick(agent, "total")}
           >
-            <Text style={[styles.agentStatValue, { color: "#667eea" }]}>
+            <Text style={[styles.agentStatValue, { color: "#4F46E5" }]}>
               {stats.total}
             </Text>
-            <Text style={styles.agentStatLabel}>Total (Voir)</Text>
+            <Text style={styles.agentStatLabel}>Total</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.agentStatItem, { backgroundColor: "#D1FAE5" }]}
+            style={[styles.agentStatItem, { backgroundColor: "#ECFDF5" }]}
             onPress={() => handleAgentStatClick(agent, "terminees")}
           >
             <Text style={[styles.agentStatValue, { color: "#10B981" }]}>
               {stats.terminees}
             </Text>
-            <Text style={styles.agentStatLabel}>Fini</Text>
+            <Text style={styles.agentStatLabel}>Terminées</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.agentStatItem, { backgroundColor: "#FEE2E2" }]}
+            style={[styles.agentStatItem, { backgroundColor: "#FEF2F2" }]}
             onPress={() => handleAgentStatClick(agent, "enRetard")}
           >
             <Text style={[styles.agentStatValue, { color: "#DC2626" }]}>
               {stats.enRetard}
             </Text>
-            <Text style={styles.agentStatLabel}>⚠️ Retard</Text>
+            <Text style={styles.agentStatLabel}>En retard</Text>
           </TouchableOpacity>
         </View>
 
@@ -341,7 +731,7 @@ const AdminReclamations = ({ navigation }: any) => {
               {
                 width: `${stats.tauxReussite}%`,
                 backgroundColor:
-                  stats.tauxReussite >= 80 ? "#10B981" : "#F59E0B",
+                  stats.tauxReussite >= 80 ? "#10B981" : stats.tauxReussite >= 50 ? "#F59E0B" : "#DC2626",
               },
             ]}
           />
@@ -360,6 +750,7 @@ const AdminReclamations = ({ navigation }: any) => {
         setSelectedReclamation(item);
         setShowDetailModal(true);
       }}
+      activeOpacity={0.7}
     >
       {isEnRetard(item) && !minimal && (
         <View style={styles.retardBadge}>
@@ -369,7 +760,7 @@ const AdminReclamations = ({ navigation }: any) => {
 
       <View style={styles.reclamationHeader}>
         <View style={styles.roomBadge}>
-          <Text style={styles.roomText}>🏠 {item.roomNumber}</Text>
+          <Text style={styles.roomText}>🏠 Chambre {item.roomNumber}</Text>
         </View>
         <UrgencyBadge urgency={item.urgency} />
       </View>
@@ -379,9 +770,12 @@ const AdminReclamations = ({ navigation }: any) => {
       </Text>
 
       <View style={styles.reclamationFooter}>
-        <Text style={styles.agentText}>
-          {item.agentAssigne ? item.agentAssigne.nom : "Non assigné"}
-        </Text>
+        <View style={styles.agentInfo}>
+          <Text style={styles.agentLabel}>Agent:</Text>
+          <Text style={styles.agentText}>
+            {item.agentAssigne ? item.agentAssigne.nom : "Non assigné"}
+          </Text>
+        </View>
         <View
           style={[
             styles.statusBadge,
@@ -392,20 +786,25 @@ const AdminReclamations = ({ navigation }: any) => {
         </View>
       </View>
 
-      {/* Boutons d'action rapides pour le mode Drill-Down */}
+      {item.createdAt && (
+        <View style={styles.timeInfo}>
+          <Text style={styles.timeText}>🕐 {formatDuree(item.createdAt)}</Text>
+        </View>
+      )}
+
       {minimal && (
         <View style={styles.actionRow}>
           <TouchableOpacity
             style={styles.actionBtn}
             onPress={() => handleAction("message", item)}
           >
-            <Text>💬 Message</Text>
+            <Text style={styles.actionBtnText}>💬 Message</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.actionBtn}
             onPress={() => handleAction("doc", item)}
           >
-            <Text>📎 Doc</Text>
+            <Text style={styles.actionBtnText}>📎 Document</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -414,35 +813,60 @@ const AdminReclamations = ({ navigation }: any) => {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
+      {/* Header
       <View style={styles.header}>
-        <View>
-          <Text style={styles.backButtonText}>← Retour</Text>
+        <View style={styles.headerContent}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Text style={styles.backButtonText}>← Retour</Text>
+          </TouchableOpacity>
           <Text style={styles.title}>Réclamations</Text>
-          <Text style={styles.subtitle}>Supervision</Text>
+          <Text style={styles.subtitle}>Gestion et supervision</Text>
         </View>
         <TouchableOpacity
           style={styles.addButton}
-          onPress={() => navigation.navigate("NewReclamation")}
+          onPress={() => setShowAddModal(true)}
         >
           <Text style={styles.addButtonText}>+ Nouvelle</Text>
         </TouchableOpacity>
-      </View>
+      </View> */}
+<ScreenHeader 
+  title="Réclamations"
+  subtitle="Gestion et supervision"
+  backgroundColor="#3B82F6"
+  onBackPress={() => navigation.goBack()}
+  rightButtons={[
+    { label: "+ Nouvelle", onPress: () => setShowAddModal(true) }
+  ]}
+/>
+
+      {/* Barre de recherche conditionnelle selon la vue */}
+      {currentView === "list" ? <SimpleSearchBar /> : <AgentSearchBar />}
+      
+      {/* Chips des filtres actifs - uniquement pour la vue liste */}
+      {currentView === "list" && <ActiveFilterChips />}
+      
+      {/* Filtres avancés - uniquement pour la vue liste */}
+      {currentView === "list" && showAdvancedFilters && <AdvancedFilters />}
 
       {/* Tabs Principaux */}
       <View style={styles.tabsContainer}>
         <TouchableOpacity
+
           style={[styles.tab, currentView === "list" && styles.tabActive]}
-          onPress={() => setCurrentView("list")}
-        >
+          onPress={() => setCurrentView("list")} 
+           >
+
           <Text
             style={[
               styles.tabText,
               currentView === "list" && styles.tabTextActive,
-            ]}
-          >
+            ]}  >
+
             📋 Liste
+
+
           </Text>
+          
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tab, currentView === "history" && styles.tabActive]}
@@ -459,7 +883,7 @@ const AdminReclamations = ({ navigation }: any) => {
         </TouchableOpacity>
       </View>
 
-      {/* Mode "Mes Réclamations" (Toggle) */}
+      {/* Mode "Mes Réclamations" */}
       {currentView === "list" && (
         <View style={styles.filterModeContainer}>
           <TouchableOpacity
@@ -475,7 +899,7 @@ const AdminReclamations = ({ navigation }: any) => {
                 filterMode === "all" && styles.filterModeTextActive,
               ]}
             >
-              Tout voir
+              🌐 Toutes
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -491,42 +915,114 @@ const AdminReclamations = ({ navigation }: any) => {
                 filterMode === "mine" && styles.filterModeTextActive,
               ]}
             >
-              👤 Mes réclamations
+              👤 Les miennes
             </Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Stats Cards (Visibles uniquement en mode All) */}
-      {filterMode === "all" && (
+      {/* Stats Cards */}
+      {filterMode === "all" && currentView === "list" && (
         <View style={styles.statsGrid}>
-          <StatCard value={stats.total} label="Total" />
-          <StatCard value={stats.enRetard} label="Retard" color="#DC2626" />
-          <StatCard value={stats.terminees} label="Fini" color="#10B981" />
-          <StatCard value={stats.enCours} label="En Cours" color="#F59E0B" />
+          <StatCard 
+            value={stats.total} 
+            label="Total" 
+            onPress={() => {
+              resetFilters();
+              setCurrentView("list");
+            }}
+          />
+          
+          <StatCard 
+            value={stats.enRetard} 
+            label="Retard" 
+            color="#DC2626"
+            onPress={() => {
+              const retardReclamations = reclamations.filter(isEnRetard);
+              setDrillDownData({
+                title: "⚠️ Réclamations en retard",
+                list: retardReclamations,
+                agent: null
+              });
+              setShowDrillDownModal(true);
+            }}
+          />
+          
+          <StatCard 
+            value={stats.terminees} 
+            label="Terminées" 
+            color="#10B981"
+            onPress={() => {
+              const terminees = reclamations.filter(
+                (rec) => rec.status === "résolu" || rec.status === "clôturé"
+              );
+              setDrillDownData({
+                title: "✅ Réclamations terminées",
+                list: terminees,
+                agent: null
+              });
+              setShowDrillDownModal(true);
+            }}
+          />
+          
+          <StatCard 
+            value={stats.enCours} 
+            label="En Cours" 
+            color="#F59E0B"
+            onPress={() => {
+              const enCours = reclamations.filter(
+                (rec) => rec.status !== "résolu" && 
+                        rec.status !== "clôturé" && 
+                        !isEnRetard(rec)
+              );
+              setDrillDownData({
+                title: "🔄 Réclamations en cours",
+                list: enCours,
+                agent: null
+              });
+              setShowDrillDownModal(true);
+            }}
+          />
         </View>
       )}
 
-      {/* --- VUE LISTE --- */}
+      {/* VUE LISTE */}
       {currentView === "list" && (
-        <FlatList
-          data={paginatedReclamations}
-          renderItem={({ item }) => <ReclamationCard item={item} />}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyIcon}>📭</Text>
-              <Text style={styles.emptyText}>Aucune réclamation trouvée</Text>
-            </View>
-          }
-        />
+        <>
+          <FlatList
+            data={paginatedReclamations}
+            renderItem={({ item }) => <ReclamationCard item={item} />}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.listContent}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            }
+            ListEmptyComponent={
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyIcon}>📭</Text>
+                <Text style={styles.emptyText}>
+                  {hasActiveFilters
+                    ? "Aucune réclamation ne correspond aux filtres" 
+                    : "Aucune réclamation trouvée"}
+                </Text>
+                {hasActiveFilters && (
+                  <TouchableOpacity 
+                    style={styles.resetEmptyButton}
+                    onPress={resetFilters}
+                  >
+                    <Text style={styles.resetEmptyButtonText}>
+                      Réinitialiser les filtres
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            }
+          />
+          <PaginationControls />
+        </>
       )}
 
-      {/* --- VUE PAR AGENT --- */}
+      {/* VUE PAR AGENT */}
       {currentView === "history" && (
         <ScrollView
           contentContainerStyle={styles.scrollContent}
@@ -534,13 +1030,30 @@ const AdminReclamations = ({ navigation }: any) => {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
         >
-          {agents.map((agent) => (
-            <AgentCard key={agent.id} agent={agent} />
-          ))}
+          {filteredAgents.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyIcon}>👤</Text>
+              <Text style={styles.emptyText}>
+                Aucun agent trouvé
+              </Text>
+              <TouchableOpacity 
+                style={styles.resetEmptyButton}
+                onPress={resetAgentFilter}
+              >
+                <Text style={styles.resetEmptyButtonText}>
+                  Réinitialiser la recherche
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            filteredAgents.map((agent) => (
+              <AgentCard key={agent.id} agent={agent} />
+            ))
+          )}
         </ScrollView>
       )}
 
-      {/* --- MODALE DRILL-DOWN AGENT (Nouvelle fonctionnalité) --- */}
+      {/* MODALE DRILL-DOWN */}
       <Modal
         visible={showDrillDownModal}
         animationType="slide"
@@ -553,10 +1066,25 @@ const AdminReclamations = ({ navigation }: any) => {
               <Text style={styles.modalTitle} numberOfLines={1}>
                 {drillDownData?.title}
               </Text>
-              <TouchableOpacity onPress={() => setShowDrillDownModal(false)}>
-                <Text style={styles.modalClose}>✕</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 15 }}>
+                <TouchableOpacity 
+                  onPress={() => {
+                    if (drillDownData?.agent) {
+                      setShowDrillDownModal(false);
+                    } else {
+                      setShowDrillDownModal(false);
+                      setCurrentView("list");
+                    }
+                  }}
+                >
+                  <Text style={[styles.modalClose, { fontSize: 18 }]}>←</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setShowDrillDownModal(false)}>
+                  <Text style={styles.modalClose}>✕</Text>
+                </TouchableOpacity>
+              </View>
             </View>
+
             <FlatList
               data={drillDownData?.list || []}
               renderItem={({ item }) => (
@@ -565,13 +1093,7 @@ const AdminReclamations = ({ navigation }: any) => {
               keyExtractor={(item) => item.id}
               contentContainerStyle={{ padding: 16 }}
               ListEmptyComponent={
-                <Text
-                  style={{
-                    textAlign: "center",
-                    marginTop: 20,
-                    color: "#6B7280",
-                  }}
-                >
+                <Text style={styles.emptyModalText}>
                   Aucune réclamation dans cette catégorie.
                 </Text>
               }
@@ -580,7 +1102,7 @@ const AdminReclamations = ({ navigation }: any) => {
         </View>
       </Modal>
 
-      {/* --- MODALE DETAILS (Existante) --- */}
+      {/* MODALE DETAILS */}
       <Modal
         visible={showDetailModal}
         animationType="slide"
@@ -590,7 +1112,7 @@ const AdminReclamations = ({ navigation }: any) => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Détails</Text>
+              <Text style={styles.modalTitle}>Détails de la réclamation</Text>
               <TouchableOpacity onPress={() => setShowDetailModal(false)}>
                 <Text style={styles.modalClose}>✕</Text>
               </TouchableOpacity>
@@ -599,17 +1121,46 @@ const AdminReclamations = ({ navigation }: any) => {
               {selectedReclamation && (
                 <>
                   <View style={styles.detailSection}>
-                    <Text style={styles.detailLabel}>Problème</Text>
+                    <Text style={styles.detailLabel}>🏠 Chambre</Text>
+                    <Text style={styles.detailValue}>{selectedReclamation.roomNumber}</Text>
+                  </View>
+
+                  <View style={styles.detailSection}>
+                    <Text style={styles.detailLabel}>📝 Problème</Text>
                     <View style={styles.problemBox}>
                       <Text style={styles.problemText}>
                         {selectedReclamation.problem}
                       </Text>
                     </View>
                   </View>
+
+                  {selectedReclamation.description && (
+                    <View style={styles.detailSection}>
+                      <Text style={styles.detailLabel}>📄 Description</Text>
+                      <View style={styles.problemBox}>
+                        <Text style={styles.problemText}>
+                          {selectedReclamation.description}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+
                   <View style={styles.detailSection}>
-                    <Text style={styles.detailLabel}>Changer Statut</Text>
+                    <Text style={styles.detailLabel}>⚡ Urgence</Text>
+                    <UrgencyBadge urgency={selectedReclamation.urgency} />
+                  </View>
+
+                  <View style={styles.detailSection}>
+                    <Text style={styles.detailLabel}>👤 Agent assigné</Text>
+                    <Text style={styles.detailValue}>
+                      {selectedReclamation.agentAssigne?.nom || "Non assigné"}
+                    </Text>
+                  </View>
+
+                  <View style={styles.detailSection}>
+                    <Text style={styles.detailLabel}>🔄 Changer le statut</Text>
                     <View style={styles.statusSelector}>
-                      {["assigné", "en cours", "résolu"].map((s) => (
+                      {["en attente", "assigné", "en cours", "résolu", "clôturé"].map((s) => (
                         <TouchableOpacity
                           key={s}
                           style={[
@@ -642,196 +1193,811 @@ const AdminReclamations = ({ navigation }: any) => {
           </View>
         </View>
       </Modal>
+
+      <AddReclamationModal
+        visible={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onSubmit={(formData) => {
+          console.log('Nouvelle réclamation:', formData);
+        }}
+      />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F3F4F6" },
+  container: {
+    flex: 1,
+    backgroundColor: "#F1F5F9",
+  },
+
+  // HEADER
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    padding: 30,
-   
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-
-
-     backgroundColor: '#3B82F6',
-    // backgroundColor: '#FBCFE8',
-  
-    paddingTop: 50,
-   
+    alignItems: "center",
+    backgroundColor: "#3B82F6",
+    paddingTop: Platform.OS === "ios" ? 60 : 50,
     paddingHorizontal: 20,
+    paddingBottom: 24,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 12,
   },
-
-  title: { fontSize: 24, fontWeight: "bold", color: "#1F2937" },
-  subtitle: { fontSize: 14, color: "#6B7280" },
+  headerContent: {
+    flex: 1,
+  },
+  backButtonText: {
+    color: "rgba(255, 255, 255, 0.95)",
+    fontSize: 15,
+    fontWeight: "600",
+    marginBottom: 12,
+  },
+  title: {
+    fontSize: 32,
+    fontWeight: "900",
+    color: "#FFFFFF",
+    letterSpacing: -0.5,
+    marginBottom: 6,
+  },
+  subtitle: {
+    fontSize: 15,
+    color: "rgba(255, 255, 255, 0.85)",
+    fontWeight: "500",
+  },
   addButton: {
-    backgroundColor: "#667eea",
-    paddingHorizontal: 16,
-    paddingVertical: 20,
-    borderRadius: 12,
-  },
-  addButtonText: { color: "#FFFFFF", fontWeight: "600" },
-
-  tabsContainer: {
-    flexDirection: "row",
     backgroundColor: "#FFFFFF",
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  addButtonText: {
+    color: "#3B82F6",
+    fontWeight: "800",
+    fontSize: 15,
+    letterSpacing: 0.5,
+  },
+
+  // RECHERCHE
+  searchContainer: {
+    flexDirection: "row",
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 12,
+    gap: 12,
+    backgroundColor: "#F1F5F9",
+  },
+  searchInputContainer: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    borderWidth: 2,
+    borderColor: "#E2E8F0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  searchIcon: {
+    fontSize: 18,
+    marginRight: 10,
+  },
+ searchInput: {
+  flex: 1,
+  paddingVertical: 14,
+  fontSize: 15,
+  color: "#000000", // Forcez le noir pour le test
+  fontWeight: "500",
+},
+  clearIcon: {
+    fontSize: 18,
+    color: "#94A3B8",
+    padding: 4,
+    fontWeight: "600",
+  },
+  filterButton: {
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#E2E8F0",
+    minWidth: 100,
+    position: "relative",
+  },
+  filterButtonActive: {
+    backgroundColor: "#3B82F6",
+    borderColor: "#3B82F6",
+  },
+  filterButtonText: {
+    color: "#3B82F6",
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  filterBadge: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    backgroundColor: "#DC2626",
+    borderRadius: 12,
+    minWidth: 24,
+    height: 24,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+  },
+  filterBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+
+  // RECHERCHE AGENT (Vue Par Agent)
+agentSearchContainer: {
+  paddingHorizontal: 20,
+  paddingTop: 20,
+  paddingBottom: 12,
+  backgroundColor: "#F1F5F9",
+  // Ajoutez ceci pour forcer l'affichage au-dessus de la liste
+  zIndex: 5000, 
+  elevation: 10, // Indispensable pour Android
+minHeight: 70
+},
+  agentSearchWrapper: {
+    position: "relative",
+    zIndex: 1000,
+  },
+  selectedAgentBadge: {
+    backgroundColor: "#DBEAFE",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    marginTop: 10,
+    borderWidth: 2,
+    borderColor: "#93C5FD",
+    alignSelf: "flex-start",
+  },
+  selectedAgentText: {
+    color: "#1E40AF",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  agentDropdown: {
+    position: "absolute",
+    top: 60,
+    left: 0,
+    right: 0,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: "#E2E8F0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+    maxHeight: 250,
+    zIndex: 1001,
+  },
+  agentDropdownScroll: {
+    maxHeight: 246,
+  },
+  agentDropdownItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
+  },
+  agentDropdownInfo: {
+    flex: 1,
+  },
+  agentDropdownName: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#1E293B",
+    marginBottom: 4,
+  },
+  agentDropdownRole: {
+    fontSize: 13,
+    color: "#64748B",
+    fontWeight: "500",
+  },
+  agentDropdownArrow: {
+    fontSize: 18,
+    color: "#3B82F6",
+    fontWeight: "600",
+  },
+  agentFilterInfo: {
+    marginTop: 12,
+    paddingHorizontal: 4,
+  },
+  agentFilterText: {
+    fontSize: 13,
+    color: "#64748B",
+    fontWeight: "600",
+  },
+
+  // CHIPS FILTRES ACTIFS
+  activeChipsContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  activeChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#DBEAFE",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 8,
+    borderWidth: 1.5,
+    borderColor: "#93C5FD",
+  },
+  activeChipText: {
+    color: "#1E40AF",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  activeChipClose: {
+    color: "#60A5FA",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  resetChip: {
+    backgroundColor: "#FEF2F2",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: "#FECACA",
+  },
+  resetChipText: {
+    color: "#DC2626",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+
+  // FILTRES AVANCÉS
+  advancedFiltersContainer: {
+    backgroundColor: "#FFFFFF",
+    marginHorizontal: 20,
+    marginTop: 8,
+    marginBottom: 12,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: "#E2E8F0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 5,
+
+  },
+
+
+  filterGroup: {
+    marginBottom: 20,
+  },
+
+
+  filterLabel: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#475569",
+    marginBottom: 12,
+    letterSpacing: 0.8,
+  },
+
+
+  filterChips: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+
+
+  filterChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 16,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 2,
+    borderColor: "#E2E8F0",
+  },
+
+  filterChipActive: {
+    backgroundColor: "#3B82F6",
+    borderColor: "#3B82F6",
+    shadowColor: "#3B82F6",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+
+  filterChipContent: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
 
+  filterChipText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#64748B",
+    textTransform: "capitalize",
+  },
+
+  filterChipTextActive: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+  },
+
+  urgencyDotSmall: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  
+  // ACTIONS FILTRES
+  filterActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: 16,
+    paddingTop: 20,
+    borderTopWidth: 2,
+    borderTopColor: "#F1F5F9",
+    gap: 12,
+  },
+  
+  resetButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 2,
+    borderColor: "#E2E8F0",
+    alignItems: "center",
+  },
+  resetButtonText: {
+    color: "#64748B",
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  applyButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: "#3B82F6",
+    alignItems: "center",
+    shadowColor: "#3B82F6",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  applyButtonText: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+    fontSize: 14,
+  },
+
+  // TABS
+  tabsContainer: {
+    flexDirection: "row",
+    backgroundColor: "#FFFFFF",
+    marginHorizontal: 20,
+    marginTop: 16,
+    padding: 6,
+    borderRadius: 18,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
+  },
   tab: {
     flex: 1,
     paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: "#F3F4F6",
+    borderRadius: 14,
     alignItems: "center",
+    justifyContent: "center",
+  },
+  tabActive: {
+    backgroundColor: "#3B82F6",
+    shadowColor: "#3B82F6",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#64748B",
+  },
+  tabTextActive: {
+    color: "#FFFFFF",
+    fontWeight: "800",
   },
 
-  tabActive: { backgroundColor: "#667eea" },
-  tabText: { fontSize: 14, fontWeight: "600", color: "#6B7280" },
-  tabTextActive: { color: "#FFFFFF" },
-
-  // Nouveau style pour le Toggle "Mes Réclamations"
+  // FILTER MODE
   filterModeContainer: {
     flexDirection: "row",
-    paddingHorizontal: 16,
-    marginBottom: 10,
-    gap: 10,
+    paddingHorizontal: 20,
+    marginTop: 16,
+    marginBottom: 8,
+    gap: 12,
   },
   filterModeBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#667eea",
-    backgroundColor: "transparent",
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: "#E2E8F0",
+    backgroundColor: "#FFFFFF",
   },
-  filterModeBtnActive: { backgroundColor: "#667eea" },
-  filterModeText: { color: "#667eea", fontSize: 12, fontWeight: "600" },
-  filterModeTextActive: { color: "#FFFFFF" },
+  filterModeBtnActive: {
+    backgroundColor: "#3B82F6",
+    borderColor: "#3B82F6",
+    shadowColor: "#3B82F6",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  filterModeText: {
+    color: "#64748B",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  filterModeTextActive: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+  },
 
-  statsGrid: { flexDirection: "row", padding: 16, gap: 12 },
+  // STATS
+  statsGrid: {
+    flexDirection: "row",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    gap: 12,
+  },
   statCard: {
     flex: 1,
     backgroundColor: "#FFFFFF",
-    padding: 16,
-    borderRadius: 16,
+    padding: 18,
+    borderRadius: 18,
     alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+    borderWidth: 2,
+    borderColor: "#F1F5F9",
+  },
+  statValue: {
+    fontSize: 28,
+    fontWeight: "900",
+    color: "#1E293B",
+    marginBottom: 6,
+  },
+  statLabel: {
+    fontSize: 11,
+    color: "#64748B",
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+
+  // PAGINATION
+  paginationContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: "#FFFFFF",
+    marginHorizontal: 20,
+    marginBottom: 16,
+    borderRadius: 18,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
     elevation: 2,
   },
-  statValue: { fontSize: 22, fontWeight: "700", color: "#1F2937" },
-  statLabel: { fontSize: 10, color: "#6B7280", marginTop: 4 },
-
-  listContent: { padding: 16 },
-  reclamationCard: {
-    backgroundColor: "#FFFFFF",
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 12,
+  paginationButton: {
+    backgroundColor: "#3B82F6",
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#3B82F6",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
     elevation: 3,
   },
+  paginationButtonDisabled: {
+    backgroundColor: "#E2E8F0",
+    shadowOpacity: 0,
+  },
+  paginationButtonText: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  paginationInfo: {
+    alignItems: "center",
+  },
+  paginationText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1E293B",
+    marginBottom: 4,
+  },
+  paginationSubtext: {
+    fontSize: 12,
+    color: "#64748B",
+    fontWeight: "500",
+  },
+
+  // RECLAMATION CARD
+  reclamationCard: {
+    backgroundColor: "#FFFFFF",
+    padding: 20,
+    borderRadius: 20,
+    marginHorizontal: 20,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
+    borderWidth: 2,
+    borderColor: "#F8FAFC",
+  },
   reclamationCardRetard: {
-    backgroundColor: "#FEE2E2",
-    borderWidth: 1,
-    borderColor: "#DC2626",
+    backgroundColor: "#FEF2F2",
+    borderColor: "#FCA5A5",
+    borderWidth: 2,
   },
   reclamationHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 12,
+    alignItems: "center",
+    marginBottom: 16,
   },
   roomBadge: {
     backgroundColor: "#EEF2FF",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 12,
   },
-  roomText: { color: "#667eea", fontSize: 13, fontWeight: "700" },
+  roomText: {
+    color: "#4F46E5",
+    fontSize: 14,
+    fontWeight: "800",
+  },
   urgencyBadge: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+    gap: 7,
   },
-  urgencyDot: { width: 8, height: 8, borderRadius: 4 },
-  urgencyText: { fontSize: 11, fontWeight: "700" },
-  reclamationProblem: { fontSize: 14, color: "#374151", marginBottom: 12 },
+  urgencyDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  urgencyText: {
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  reclamationProblem: {
+    fontSize: 16,
+    color: "#334155",
+    lineHeight: 24,
+    marginBottom: 16,
+    fontWeight: "600",
+  },
   reclamationFooter: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#F3F4F6",
+    paddingTop: 16,
+    borderTopWidth: 2,
+    borderTopColor: "#F1F5F9",
   },
-  agentText: { fontSize: 13, fontWeight: "600", color: "#374151" },
-  statusBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  agentInfo: {
+    flex: 1,
+  },
+  agentLabel: {
+    fontSize: 11,
+    color: "#94A3B8",
+    fontWeight: "600",
+    marginBottom: 4,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  agentText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#475569",
+  },
+  statusBadge: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+    minWidth: 100,
+    alignItems: "center",
+  },
   statusText: {
     color: "#FFFFFF",
-    fontSize: 11,
-    fontWeight: "700",
-    textTransform: "capitalize",
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   retardBadge: {
     backgroundColor: "#DC2626",
-    padding: 4,
-    borderRadius: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 10,
     alignSelf: "flex-start",
-    marginBottom: 8,
-  },
-  retardText: { color: "#FFF", fontSize: 10, fontWeight: "bold" },
-
-  // Styles Agent Interactif
-  agentCard: {
-    backgroundColor: "#FFFFFF",
-    padding: 16,
-    borderRadius: 16,
     marginBottom: 12,
-    elevation: 3,
   },
-  agentHeader: { marginBottom: 12 },
-  agentName: { fontSize: 18, fontWeight: "700", color: "#1F2937" },
-  agentRole: { fontSize: 13, color: "#6B7280" },
-  agentStatsGrid: { flexDirection: "row", gap: 8, marginBottom: 12 },
-  agentStatItem: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 12,
-    alignItems: "center",
+  retardText: {
+    color: "#FFF",
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 0.5,
   },
-  agentStatValue: { fontSize: 20, fontWeight: "700" },
-  agentStatLabel: { fontSize: 10, color: "#6B7280", marginTop: 4 },
-  progressBarContainer: {
-    height: 6,
-    backgroundColor: "#F3F4F6",
-    borderRadius: 4,
-    overflow: "hidden",
+  timeInfo: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#F1F5F9",
   },
-  progressBar: { height: "100%", borderRadius: 4 },
+  timeText: {
+    fontSize: 12,
+    color: "#64748B",
+    fontWeight: "600",
+  },
 
-  // Styles Actions Drill-Down
+  // ACTION ROW
   actionRow: {
     flexDirection: "row",
     justifyContent: "flex-end",
-    marginTop: 12,
-    gap: 8,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#F3F4F6",
+    marginTop: 16,
+    gap: 10,
+    paddingTop: 16,
+    borderTopWidth: 2,
+    borderTopColor: "#F1F5F9",
   },
   actionBtn: {
-    backgroundColor: "#F3F4F6",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
+    backgroundColor: "#F8FAFC",
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#E2E8F0",
+  },
+  actionBtnText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#475569",
   },
 
-  // Modales
+  // AGENT CARD
+  agentCard: {
+    backgroundColor: "#FFFFFF",
+    padding: 20,
+    borderRadius: 20,
+    marginHorizontal: 20,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
+    borderWidth: 2,
+    borderColor: "#F8FAFC",
+  },
+  agentHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 18,
+  },
+  agentName: {
+    fontSize: 20,
+    fontWeight: "900",
+    color: "#1E293B",
+    marginBottom: 4,
+  },
+  agentRole: {
+    fontSize: 14,
+    color: "#64748B",
+    fontWeight: "600",
+  },
+  agentSuccessRate: {
+    alignItems: "flex-end",
+  },
+  agentSuccessValue: {
+    fontSize: 24,
+    fontWeight: "900",
+    color: "#10B981",
+  },
+  agentSuccessLabel: {
+    fontSize: 10,
+    color: "#64748B",
+    fontWeight: "600",
+    textTransform: "uppercase",
+  },
+  agentStatsGrid: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 18,
+  },
+  agentStatItem: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 16,
+    alignItems: "center",
+  },
+  agentStatValue: {
+    fontSize: 24,
+    fontWeight: "900",
+    marginBottom: 6,
+  },
+  agentStatLabel: {
+    fontSize: 11,
+    color: "#64748B",
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  progressBarContainer: {
+    height: 10,
+    backgroundColor: "#F1F5F9",
+    borderRadius: 6,
+    overflow: "hidden",
+  },
+  progressBar: {
+    height: "100%",
+    borderRadius: 6,
+  },
+
+  // MODALES
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.6)",
@@ -839,47 +2005,144 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
     maxHeight: "90%",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 24,
   },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
+    padding: 24,
+    borderBottomWidth: 2,
+    borderBottomColor: "#F1F5F9",
   },
-  modalTitle: { fontSize: 20, fontWeight: "700", color: "#1F2937" },
-  modalClose: { fontSize: 24, color: "#6B7280" },
-  modalBody: { padding: 20 },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: "900",
+    color: "#1E293B",
+    flex: 1,
+    marginRight: 12,
+  },
+  modalClose: {
+    fontSize: 26,
+    color: "#64748B",
+    fontWeight: "300",
+    width: 44,
+    textAlign: "center",
+  },
+  modalBody: {
+    padding: 24,
+  },
+  emptyModalText: {
+    textAlign: "center",
+    marginTop: 32,
+    marginBottom: 32,
+    color: "#94A3B8",
+    fontSize: 15,
+    fontWeight: "600",
+  },
 
-  detailSection: { marginBottom: 20 },
+  // DETAILS
+  detailSection: {
+    marginBottom: 24,
+  },
   detailLabel: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#475569",
+    marginBottom: 12,
+    letterSpacing: 0.5,
+  },
+  detailValue: {
+    fontSize: 16,
+    color: "#1E293B",
+    fontWeight: "600",
+  },
+  problemBox: {
+    backgroundColor: "#F8FAFC",
+    padding: 18,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: "#E2E8F0",
+  },
+  problemText: {
+    fontSize: 15,
+    color: "#334155",
+    lineHeight: 24,
+    fontWeight: "500",
+  },
+  statusSelector: {
+    flexDirection: "row",
+    gap: 10,
+    flexWrap: "wrap",
+  },
+  statusOption: {
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 2,
+    borderColor: "#E2E8F0",
+    minWidth: 110,
+    alignItems: "center",
+  },
+  statusOptionText: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#374151",
-    marginBottom: 8,
+    color: "#64748B",
+    textTransform: "capitalize",
   },
-  problemBox: { backgroundColor: "#F9FAFB", padding: 16, borderRadius: 12 },
-  problemText: { fontSize: 14, color: "#374151" },
-  statusSelector: { flexDirection: "row", gap: 8 },
-  statusOption: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: "#F3F4F6",
-  },
-  statusOptionText: { fontSize: 12, fontWeight: "600", color: "#6B7280" },
 
-  emptyState: { alignItems: "center", marginTop: 50 },
-  emptyIcon: { fontSize: 40, marginBottom: 10 },
-  emptyText: { color: "#9CA3AF" },
-  backButtonText: {
+  // ÉTATS VIDES
+  emptyState: {
+    alignItems: "center",
+    marginTop: 80,
+    paddingHorizontal: 40,
+  },
+  emptyIcon: {
+    fontSize: 72,
+    marginBottom: 20,
+    opacity: 0.4,
+  },
+  emptyText: {
+    color: "#94A3B8",
+    fontSize: 17,
+    fontWeight: "600",
+    textAlign: "center",
+    marginBottom: 16,
+    lineHeight: 24,
+  },
+  resetEmptyButton: {
+    backgroundColor: "#3B82F6",
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 14,
+    shadowColor: "#3B82F6",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  resetEmptyButtonText: {
     color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "500",
+    fontWeight: "800",
+    fontSize: 15,
+  },
+
+  // CONTENU
+  listContent: {
+    paddingVertical: 16,
+    paddingBottom: 32,
+  },
+  scrollContent: {
+    paddingVertical: 16,
+    paddingBottom: 32,
   },
 });
 
