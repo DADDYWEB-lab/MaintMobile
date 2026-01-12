@@ -924,7 +924,7 @@ const CommandeFournisseurs = ({ navigation }: any) => {
                                 <TouchableOpacity 
                                     style={[styles.devisActionButton, { backgroundColor: COLORS.neutral }]}
                                     onPress={() => setShowDevisModal(false)} >
-                                        
+
                                     <Text style={styles.devisActionButtonText}>Annuler</Text>
 
 
@@ -971,7 +971,9 @@ const styles = StyleSheet.create({
         paddingVertical: 8,
         borderRadius: 8,
         gap: 8,
-    },
+    }
+    ,
+    
     devisHeaderButtonText: {
         color: COLORS.headerText,
         fontWeight: '600',

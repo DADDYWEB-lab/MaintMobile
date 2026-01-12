@@ -1,506 +1,220 @@
-// GestionEspacesHierarchie.tsx
-// @ts-nocheck
-
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  View,
-  Text,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  TextInput,
-  Modal,
-  Alert,
-  RefreshControl,
-  Platform,
-  Dimensions,
-  Animated
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput,
+  Modal, Alert, ActivityIndicator, FlatList
 } from 'react-native';
 import {
-  collection,
-  query,
-  onSnapshot,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  doc,
-  serverTimestamp,
-  orderBy
+  collection, onSnapshot, addDoc, updateDoc, deleteDoc,
+  doc, serverTimestamp, query, where, getDocs, writeBatch, getDoc
 } from 'firebase/firestore';
 import { db } from '../../../firebaseConfig';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import QRCode from 'react-native-qrcode-svg';
+import { Icon } from 'lucide-react-native';  
 
-const { width } = Dimensions.get('window');
+// Types
+interface EspaceParent {
+  id: string;
+  nom: string;
+  type: string;
+  numero?: string;
+  categorieId: string;
+  qrCode?: string;
+  assignedTo?: EmployeeAssignment[];
+  createdAt?: any;
+  updatedAt?: any;
+}
 
-const GestionEspacesHierarchie = ({ navigation }: any) => {
-  const [espaces, setEspaces] = useState([]);
-  const [sousEspaces, setSousEspaces] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [employees, setEmployees] = useState([]);
-  const [refreshing, setRefreshing] = useState(false);
+interface SousEspace {
+  id: string;
+  numero: string;
+  type: string;
+  espaceParentId: string;
+  qrCode?: string;
+  assignedTo?: EmployeeAssignment[];
+  createdAt?: any;
+  updatedAt?: any;
+}
 
+interface CategorieEspace {
+  id: string;
+  nom: string;
+}
+
+interface EmployeeAssignment {
+  employeeId: string;
+  employeeName: string;
+  employeeRole?: string;
+  assignedAt: string;
+}
+
+interface Employee {
+  id: string;
+  nom?: string;
+  prenom?: string;
+  role?: string;
+  poste?: string;
+  email?: string;
+  [key: string]: any;
+}
+
+interface EspaceForm {
+  nom: string;
+  type: string;
+  numero: string;
+  categorieId: string;
+}
+
+interface SousEspaceForm {
+  numero: string;
+  type: string;
+  parentId: string;
+}
+
+// Fonction utilitaire pour formater les dates
+const formatDate = (dateString: string) => {
+  if (!dateString) return 'Date inconnue';
+  
+  try {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+  } catch (error) {
+    return dateString;
+  }
+};
+
+const GestionEspacesHierarchie = () => {
+  // États principaux
+  const [espaces, setEspaces] = useState<EspaceParent[]>([]);
+  const [sousEspaces, setSousEspaces] = useState<SousEspace[]>([]);
+  const [categories, setCategories] = useState<CategorieEspace[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterCategorie, setFilterCategorie] = useState('all');
-  const [expandedEspaces, setExpandedEspaces] = useState({});
+  const [expandedEspaces, setExpandedEspaces] = useState<Record<string, boolean>>({});
+  const [isLoading, setIsLoading] = useState(true);
 
+  // Modales
   const [showEspaceModal, setShowEspaceModal] = useState(false);
   const [showSousEspaceModal, setShowSousEspaceModal] = useState(false);
-  const [showCategorieModal, setShowCategorieModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
-
-  const [selectedEspace, setSelectedEspace] = useState(null);
-  const [selectedSousEspace, setSelectedSousEspace] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [qrCodeData, setQrCodeData] = useState({ valeur: '', titre: '' });
+  // Formulaires et sélections
+  const [selectedItem, setSelectedItem] = useState<EspaceParent | SousEspace | null>(null);
+  const [selectedQRCode, setSelectedQRCode] = useState<string>('');
+  const [selectedItemName, setSelectedItemName] = useState<string>('');
 
-  // Animations
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(50)).current;
+const [showQuickActionMenu, setShowQuickActionMenu] = useState(false);
 
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 600,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 500,
-        useNativeDriver: true,
-      })
-    ]).start();
-  }, []);
+    // Ajoutez cet état pour le menu d'action
+const [showActionMenu, setShowActionMenu] = useState(false);
+const [selectedForAction, setSelectedForAction] = useState<{
+  type: 'espace' | 'sous_espace' | null;
+  item: EspaceParent | SousEspace | null;
+}>({ type: null, item: null });
 
-  // Formulaires (inchangés)
-  const [espaceForm, setEspaceForm] = useState({
+
+
+  const [espaceForm, setEspaceForm] = useState<EspaceForm>({
     nom: '',
     type: 'etage',
     numero: '',
-    categorieId: '',
-    description: ''
+    categorieId: 'public_client'
   });
-
-  const [sousEspaceForm, setSousEspaceForm] = useState({
-    nom: '',
+  const [sousEspaceForm, setSousEspaceForm] = useState<SousEspaceForm>({
     numero: '',
     type: 'chambre',
-    espaceParentId: '',
-    superficie: '',
-    capacite: '',
-    statut: 'libre',
-    equipements: []
+    parentId: ''
   });
 
-  const [categorieForm, setCategorieForm] = useState({
-    nom: '',
-    type: 'public',
-    couleur: '#3B82F6',
-    icone: '🏢'
-  });
 
-  const [assignForm, setAssignForm] = useState({
-    employeId: '',
-    typeTache: 'nettoyage',
-    dateDebut: new Date().toISOString().split('T')[0],
-    notes: ''
-  });
 
-  // Données statiques (inchangées)
-  const typesTache = [
-    { value: 'nettoyage', label: 'Nettoyage' },
-    { value: 'maintenance', label: 'Maintenance' },
-    { value: 'electricite', label: 'Électricité' },
-    { value: 'plomberie', label: 'Plomberie' },
-    { value: 'reception', label: 'Réception' },
-    { value: 'securite', label: 'Sécurité' },
-    { value: 'menage', label: 'Femme de ménage' },
-    { value: 'technique', label: 'Technique' }
-  ];
-
-  const categoriesDefaut = [
-    {
-      id: 'public_client',
-      nom: 'Public - Client',
-      type: 'public',
-      couleur: '#3B82F6',
-      icone: '👥',
-      exemples: 'Chambres, Restaurant, Piscine, Spa'
-    },
-    {
-      id: 'public_commun',
-      nom: 'Public - Commun',
-      type: 'public',
-      couleur: '#10B981',
-      icone: '🚪',
-      exemples: 'Hall, Couloirs, Toilettes publiques, Parking'
-    },
-    {
-      id: 'professionnel_technique',
-      nom: 'Professionnel - Technique',
-      type: 'professionnel',
-      couleur: '#F59E0B',
-      icone: '🏢',
-      exemples: 'Cuisine, Lingerie, Local technique, Chaufferie'
-    },
-    {
-      id: 'professionnel_personnel',
-      nom: 'Professionnel - Personnel',
-      type: 'professionnel',
-      couleur: '#8B5CF6',
-      icone: '🚿',
-      exemples: 'Vestiaires, Douches staff, Salle de pause, Bureau'
-    }
-  ];
-
-  const typesEspace = [
-    { value: 'etage', label: 'Étage', icon: '🏢' },
-    { value: 'batiment', label: 'Bâtiment', icon: '🏗️' },
-    { value: 'zone', label: 'Zone', icon: '📍' },
-    { value: 'aile', label: 'Aile', icon: '➡️' }
-  ];
-
-  const typesSousEspace = [
-    { value: 'chambre', label: 'Chambre', icon: '🛏️' },
-    { value: 'suite', label: 'Suite', icon: '👑' },
-    { value: 'toilette', label: 'Toilette', icon: '🚽' },
-    { value: 'couloir', label: 'Couloir', icon: '🚶' },
-    { value: 'restaurant', label: 'Restaurant', icon: '🍽️' },
-    { value: 'cuisine', label: 'Cuisine', icon: '👨‍🍳' },
-    { value: 'lingerie', label: 'Lingerie', icon: '🧺' },
-    { value: 'douche_personnel', label: 'Douche Personnel', icon: '🚿' }
-  ];
-
-  // Récupérer les données (inchangé)
+  
+  // Abonnements Firestore avec gestion d'erreurs
   useEffect(() => {
-    const unsubEspaces = onSnapshot(query(collection(db, 'espaces')), (snapshot) => {
-      setEspaces(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+    const unsubscribers: (() => void)[] = [];
 
-    const unsubSousEspaces = onSnapshot(query(collection(db, 'sous_espaces')), (snapshot) => {
-      setSousEspaces(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+    try {
+      // Espaces parents
+      const unsubEspaces = onSnapshot(
+        collection(db, 'espaces'),
+        (snap) => {
+          setEspaces(snap.docs.map(d => ({ id: d.id, ...d.data() } as EspaceParent)));
+          setIsLoading(false);
+        },
+        (error) => {
+          console.error('Erreur espaces:', error);
+          Alert.alert('Erreur', 'Impossible de charger les espaces');
+          setIsLoading(false);
+        }
+      );
+      unsubscribers.push(unsubEspaces);
 
-    const unsubCategories = onSnapshot(query(collection(db, 'categories_espaces')), (snapshot) => {
-      const customCats = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setCategories([...categoriesDefaut, ...customCats]);
-    });
+      // Sous-espaces
+      const unsubSous = onSnapshot(
+        collection(db, 'sous_espaces'),
+        (snap) => setSousEspaces(snap.docs.map(d => ({ id: d.id, ...d.data() } as SousEspace))),
+        (error) => console.error('Erreur sous-espaces:', error)
+      );
+      unsubscribers.push(unsubSous);
 
-    const unsubEmployees = onSnapshot(query(collection(db, 'staff')), (snapshot) => {
-      setEmployees(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+      // Catégories
+      const unsubCats = onSnapshot(
+        collection(db, 'categories_espaces'),
+        (snap) => setCategories(snap.docs.map(d => ({ id: d.id, ...d.data() } as CategorieEspace))),
+        (error) => console.error('Erreur catégories:', error)
+      );
+      unsubscribers.push(unsubCats);
 
-    return () => {
-      unsubEspaces();
-      unsubSousEspaces();
-      unsubCategories();
-      unsubEmployees();
-    };
+      // Employés
+      const unsubStaff = onSnapshot(
+        collection(db, 'staff'),
+        (snap) => setEmployees(snap.docs.map(d => ({ id: d.id, ...d.data() } as Employee))),
+        (error) => console.error('Erreur staff:', error)
+      );
+      unsubscribers.push(unsubStaff);
+    } catch (error) {
+      console.error('Erreur initialisation:', error);
+      setIsLoading(false);
+    }
+
+    return () => unsubscribers.forEach(unsub => unsub());
   }, []);
 
-  // Fonctions métier (inchangées)
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 1000);
-  }, []);
-
-  const getSousEspacesByParent = (parentId) => {
-    return sousEspaces.filter(se => se.espaceParentId === parentId);
-  };
-
-  const getCategorieById = (catId) => {
-    return categories.find(c => c.id === catId);
-  };
-
-  const toggleExpand = (espaceId) => {
-    setExpandedEspaces(prev => ({ ...prev, [espaceId]: !prev[espaceId] }));
-  };
-
-  const resetEspaceForm = () => {
-    setEspaceForm({ nom: '', type: 'etage', numero: '', categorieId: '', description: '' });
-    setSelectedEspace(null);
-  };
-
-  const resetSousEspaceForm = () => {
-    setSousEspaceForm({
-      nom: '',
-      numero: '',
-      type: 'chambre',
-      espaceParentId: '',
-      superficie: '',
-      capacite: '',
-      statut: 'libre',
-      equipements: []
-    });
-    setSelectedSousEspace(null);
-  };
-
-  const resetCategorieForm = () => {
-    setCategorieForm({ nom: '', type: 'public', couleur: '#3B82F6', icone: '🏢' });
-  };
-
-  const resetAssignForm = () => {
-    setAssignForm({
-      employeId: '',
-      typeTache: 'nettoyage',
-      dateDebut: new Date().toISOString().split('T')[0],
-      notes: ''
-    });
-  };
-
-  // Fonctions de gestion (handleSubmitEspace, handleSubmitSousEspace, etc.) restent inchangées
-  // ... (conserver toutes les fonctions métier existantes)
-
-  // Ajouter/Modifier Espace parent
-  const handleSubmitEspace = async () => {
-    if (!espaceForm.nom || !espaceForm.categorieId) {
-      Alert.alert('Erreur', 'Veuillez remplir les champs obligatoires');
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      const espaceData = {
-        ...espaceForm,
-        updatedAt: serverTimestamp()
-      };
-
-      if (selectedEspace) {
-        await updateDoc(doc(db, 'espaces', selectedEspace.id), espaceData);
-        Alert.alert('Succès', 'Espace modifié !');
-      } else {
-        const docRef = await addDoc(collection(db, 'espaces'), {
-          ...espaceData,
-          createdAt: serverTimestamp()
-        });
-        Alert.alert('Succès', 'Espace créé !');
-
-        setQrCodeData({
-          valeur: docRef.id,
-          titre: espaceForm.nom
-        });
-        setShowQRModal(true);
-      }
-
-      setShowEspaceModal(false);
-      resetEspaceForm();
-    } catch (error) {
-      console.error('Erreur:', error);
-      Alert.alert('Erreur', error.message);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // Ajouter/Modifier Sous-espace
-  const handleSubmitSousEspace = async () => {
-    if (!sousEspaceForm.numero || !sousEspaceForm.espaceParentId) {
-      Alert.alert('Erreur', 'Veuillez remplir les champs obligatoires');
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      const sousEspaceData = {
-        ...sousEspaceForm,
-        updatedAt: serverTimestamp()
-      };
-
-      if (selectedSousEspace) {
-        await updateDoc(doc(db, 'sous_espaces', selectedSousEspace.id), sousEspaceData);
-        Alert.alert('Succès', 'Sous-espace modifié !');
-      } else {
-        const docRef = await addDoc(collection(db, 'sous_espaces'), {
-          ...sousEspaceData,
-          createdAt: serverTimestamp()
-        });
-        Alert.alert('Succès', 'Sous-espace créé !');
-
-        setQrCodeData({
-          valeur: docRef.id,
-          titre: `${sousEspaceForm.numero} - ${sousEspaceForm.nom || ''}`
-        });
-        setShowQRModal(true);
-      }
-
-      setShowSousEspaceModal(false);
-      resetSousEspaceForm();
-    } catch (error) {
-      console.error('Erreur:', error);
-      Alert.alert('Erreur', error.message);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // Ajouter catégorie personnalisée
-  const handleSubmitCategorie = async () => {
-    if (!categorieForm.nom) {
-      Alert.alert('Erreur', 'Veuillez entrer un nom');
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      await addDoc(collection(db, 'categories_espaces'), {
-        ...categorieForm,
-        custom: true,
-        createdAt: serverTimestamp()
-      });
-      Alert.alert('Succès', 'Catégorie ajoutée !');
-      setShowCategorieModal(false);
-      resetCategorieForm();
-    } catch (error) {
-      console.error('Erreur:', error);
-      Alert.alert('Erreur', error.message);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // Assigner un employé
-  const handleAssign = async () => {
-    if (!assignForm.employeId) {
-      Alert.alert('Erreur', 'Veuillez sélectionner un employé');
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      const employe = employees.find(e => e.id === assignForm.employeId);
-      const nouvelleAssignation = {
-        employeId: employe.id,
-        employeUid: employe.uid,
-        employeNom: employe.name,
-        employeRole: employe.role,
-        typeTache: assignForm.typeTache,
-        dateDebut: assignForm.dateDebut,
-        notes: assignForm.notes,
-        assigneLe: new Date().toISOString()
-      };
-
-      if (selectedEspace) {
-        const espaceDoc = espaces.find(e => e.id === selectedEspace.id);
-        const assignationsExistantes = espaceDoc.assignations || [];
-
-        const dejaAssigné = assignationsExistantes.some(
-          assign => assign.employeId === employe.id && assign.typeTache === assignForm.typeTache
-        );
-
-        if (dejaAssigné) {
-          Alert.alert('Attention', 'Cet employé est déjà assigné à cette tâche pour cet espace');
-          return;
-        }
-
-        await updateDoc(doc(db, 'espaces', selectedEspace.id), {
-          assignations: [...assignationsExistantes, nouvelleAssignation],
-          updatedAt: serverTimestamp()
-        });
-      } else if (selectedSousEspace) {
-        const sousEspaceDoc = sousEspaces.find(se => se.id === selectedSousEspace.id);
-        const assignationsExistantes = sousEspaceDoc.assignations || [];
-
-        const dejaAssigné = assignationsExistantes.some(
-          assign => assign.employeId === employe.id && assign.typeTache === assignForm.typeTache
-        );
-
-        if (dejaAssigné) {
-          Alert.alert('Attention', 'Cet employé est déjà assigné à cette tâche pour ce sous-espace');
-          return;
-        }
-
-        await updateDoc(doc(db, 'sous_espaces', selectedSousEspace.id), {
-          assignations: [...assignationsExistantes, nouvelleAssignation],
-          updatedAt: serverTimestamp()
-        });
-      }
-
-      Alert.alert('Succès', 'Assignation réussie !');
-      setShowAssignModal(false);
-      setSelectedEspace(null);
-      setSelectedSousEspace(null);
-      resetAssignForm();
-    } catch (error) {
-      console.error('Erreur:', error);
-      Alert.alert('Erreur', error.message);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // Retirer une assignation
-  const handleRemoveAssignation = async (espaceId, isSousEspace = false, assignationIndex) => {
+  // Handlers avec useCallback pour optimisation
+  const handleDeleteEspace = useCallback(async (item: EspaceParent) => {
     Alert.alert(
-      'Confirmation',
-      'Retirer cette assignation ?',
+      "Confirmation",
+      `Supprimer "${item.nom}" et tous ses sous-espaces ?`,
       [
-        { text: 'Annuler', style: 'cancel' },
+        { text: "Annuler", style: "cancel" },
         {
-          text: 'Retirer',
-          style: 'destructive',
+          text: "Supprimer",
+          style: "destructive",
           onPress: async () => {
+            setIsSubmitting(true);
             try {
-              const collectionName = isSousEspace ? 'sous_espaces' : 'espaces';
-              const docRef = doc(db, collectionName, espaceId);
-              const docData = isSousEspace
-                ? sousEspaces.find(se => se.id === espaceId)
-                : espaces.find(e => e.id === espaceId);
-
-              const nouvellesAssignations = docData.assignations.filter((_, index) => index !== assignationIndex);
-
-              await updateDoc(docRef, {
-                assignations: nouvellesAssignations,
-                updatedAt: serverTimestamp()
-              });
-
-              Alert.alert('Succès', 'Assignation retirée !');
-            } catch (error) {
-              console.error('Erreur:', error);
-              Alert.alert('Erreur', error.message);
-            }
-          }
-        }
-      ]
-    );
-  };
-
-  // Supprimer un espace
-  const handleDeleteEspace = async (espace) => {
-    const sousEspacesCount = getSousEspacesByParent(espace.id).length;
-
-    Alert.alert(
-      'Confirmer la suppression',
-      `Êtes-vous sûr de vouloir supprimer l'espace "${espace.nom}" ?\n\n` +
-      `Cette action supprimera :\n` +
-      `• L'espace parent\n` +
-      `• ${sousEspacesCount} sous-espace(s)\n` +
-      `• Toutes les assignations\n\n` +
-      `Cette action est irréversible !`,
-      [
-        { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Supprimer',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setIsSubmitting(true);
-
-              const sousEspacesAssocies = getSousEspacesByParent(espace.id);
-              const deletePromises = sousEspacesAssocies.map(sousEspace =>
-                deleteDoc(doc(db, 'sous_espaces', sousEspace.id))
+              const batch = writeBatch(db);
+              batch.delete(doc(db, 'espaces', item.id));
+              
+              const q = query(
+                collection(db, 'sous_espaces'),
+                where("espaceParentId", "==", item.id)
               );
-
-              deletePromises.push(deleteDoc(doc(db, 'espaces', espace.id)));
-
-              await Promise.all(deletePromises);
-
-              Alert.alert('Succès', 'Espace et sous-espaces supprimés !');
+              const snap = await getDocs(q);
+              snap.forEach(d => batch.delete(d.ref));
+              
+              await batch.commit();
+              Alert.alert('Succès', 'Espace supprimé avec succès');
             } catch (error) {
-              console.error('Erreur:', error);
-              Alert.alert('Erreur', error.message);
+              console.error('Erreur suppression:', error);
+              Alert.alert("Erreur", "Impossible de supprimer l'espace");
             } finally {
               setIsSubmitting(false);
             }
@@ -508,1039 +222,1930 @@ const GestionEspacesHierarchie = ({ navigation }: any) => {
         }
       ]
     );
-  };
+  }, []);
 
-  // Supprimer un sous-espace
-  const handleDeleteSousEspace = async (sousEspace) => {
+  const handleDeleteSousEspace = useCallback(async (item: SousEspace) => {
     Alert.alert(
-      'Confirmer la suppression',
-      `Supprimer le sous-espace "${sousEspace.numero}" ?`,
+      "Confirmation",
+      `Supprimer le sous-espace "${item.numero}" ?`,
       [
-        { text: 'Annuler', style: 'cancel' },
+        { text: "Annuler", style: "cancel" },
         {
-          text: 'Supprimer',
-          style: 'destructive',
+          text: "Supprimer",
+          style: "destructive",
           onPress: async () => {
+            setIsSubmitting(true);
             try {
-              await deleteDoc(doc(db, 'sous_espaces', sousEspace.id));
-              Alert.alert('Succès', 'Sous-espace supprimé !');
+              await deleteDoc(doc(db, 'sous_espaces', item.id));
+              Alert.alert('Succès', 'Sous-espace supprimé');
             } catch (error) {
-              Alert.alert('Erreur', error.message);
+              console.error('Erreur suppression sous-espace:', error);
+              Alert.alert("Erreur", "Impossible de supprimer le sous-espace");
+            } finally {
+              setIsSubmitting(false);
             }
           }
         }
       ]
     );
-  };
+  }, []);
 
-  // Filtrage et statistiques
-  const filteredEspaces = useMemo(() => {
-    return espaces.filter(espace => {
-      const matchSearch = espace.nom?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        espace.numero?.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchCategorie = filterCategorie === 'all' || espace.categorieId === filterCategorie;
-      return matchSearch && matchCategorie;
+  const handleSaveEspace = useCallback(async () => {
+    if (!espaceForm.nom.trim()) {
+      Alert.alert('Erreur', 'Le nom est requis');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      if (selectedItem && 'nom' in selectedItem) {
+        // Mise à jour
+        await updateDoc(doc(db, 'espaces', selectedItem.id), {
+          ...espaceForm,
+          updatedAt: serverTimestamp()
+        });
+        Alert.alert('Succès', 'Espace mis à jour');
+      } else {
+        // Création - générer automatiquement le QR Code
+        const newEspace = {
+          ...espaceForm,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          assignedTo: []
+        };
+        
+        // Ajouter le document
+        const docRef = await addDoc(collection(db, 'espaces'), newEspace);
+        
+        // Générer le QR Code après création
+        const qrData = JSON.stringify({
+          id: docRef.id,
+          type: 'espace',
+          nom: espaceForm.nom,
+          timestamp: new Date().toISOString()
+        });
+        
+        await updateDoc(docRef, {
+          qrCode: qrData
+        });
+        
+        Alert.alert('Succès', 'Espace créé avec QR Code généré');
+      }
+      setShowEspaceModal(false);
+      resetEspaceForm();
+    } catch (error) {
+      console.error('Erreur sauvegarde:', error);
+      Alert.alert('Erreur', 'Impossible de sauvegarder');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [espaceForm, selectedItem]);
+
+  const handleSaveSousEspace = useCallback(async () => {
+    if (!sousEspaceForm.numero.trim() || !sousEspaceForm.parentId) {
+      Alert.alert('Erreur', 'Numéro et espace parent requis');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      if (selectedItem && 'espaceParentId' in selectedItem) {
+        // Mise à jour
+        await updateDoc(doc(db, 'sous_espaces', selectedItem.id), {
+          ...sousEspaceForm,
+          updatedAt: serverTimestamp()
+        });
+        Alert.alert('Succès', 'Sous-espace mis à jour');
+      } else {
+        // Création - générer automatiquement le QR Code
+        const newSousEspace = {
+          ...sousEspaceForm,
+          espaceParentId: sousEspaceForm.parentId,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          assignedTo: []
+        };
+        
+        // Ajouter le document
+        const docRef = await addDoc(collection(db, 'sous_espaces'), newSousEspace);
+        
+        // Générer le QR Code après création
+        const qrData = JSON.stringify({
+          id: docRef.id,
+          type: 'sous_espace',
+          numero: sousEspaceForm.numero,
+          timestamp: new Date().toISOString()
+        });
+        
+        await updateDoc(docRef, {
+          qrCode: qrData
+        });
+        
+        Alert.alert('Succès', 'Sous-espace créé avec QR Code généré');
+      }
+      setShowSousEspaceModal(false);
+      resetSousEspaceForm();
+    } catch (error) {
+      console.error('Erreur sauvegarde sous-espace:', error);
+      Alert.alert('Erreur', 'Impossible de sauvegarder');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [sousEspaceForm, selectedItem]);
+
+  const handleGenerateQR = useCallback(async (item: EspaceParent | SousEspace) => {
+    const itemId = item.id;
+    const isEspace = 'nom' in item;
+    const nom = isEspace ? item.nom : item.numero;
+    
+    // Créer une URL unique pour l'espace/sous-espace
+    const qrData = JSON.stringify({
+      id: itemId,
+      type: isEspace ? 'espace' : 'sous_espace',
+      nom: nom,
+      timestamp: new Date().toISOString()
     });
-  }, [espaces, searchTerm, filterCategorie]);
 
-  const totalAssignations = useMemo(() => {
-    return [...espaces, ...sousEspaces].reduce((total, item) =>
-      total + (item.assignations ? item.assignations.length : 0), 0
-    );
-  }, [espaces, sousEspaces]);
+    setIsSubmitting(true);
+    try {
+      const collectionName = isEspace ? 'espaces' : 'sous_espaces';
+      await updateDoc(doc(db, collectionName, itemId), {
+        qrCode: qrData,
+        updatedAt: serverTimestamp()
+      });
+      
+      setSelectedQRCode(qrData);
+      setSelectedItemName(nom);
+      setShowQRModal(true);
+      
+      Alert.alert('Succès', 'QR Code généré avec succès');
+    } catch (error) {
+      console.error('Erreur génération QR:', error);
+      Alert.alert('Erreur', 'Impossible de générer le QR Code');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, []);
 
-  const stats = useMemo(() => {
-    return {
-      public: espaces.filter(e => {
-        const cat = getCategorieById(e.categorieId);
-        return cat?.type === 'public';
-      }).length,
-      professionnel: espaces.filter(e => {
-        const cat = getCategorieById(e.categorieId);
-        return cat?.type === 'professionnel';
-      }).length,
-      sousEspaces: sousEspaces.length,
-      assignations: totalAssignations
+  const handleAssignEmployee = useCallback(async (employee: Employee, item: EspaceParent | SousEspace) => {
+    const isEspace = 'nom' in item;
+    const collectionName = isEspace ? 'espaces' : 'sous_espaces';
+    
+    const assignment: EmployeeAssignment = {
+      employeeId: employee.id,
+      employeeName: `${employee.prenom || ''} ${employee.nom || ''}`.trim(),
+      employeeRole: employee.role || employee.poste || 'Employé',
+      assignedAt: new Date().toISOString()
     };
-  }, [espaces, sousEspaces, totalAssignations, categories]);
 
-  // Composants UI améliorés
-  const StatCard = ({ icon, label, value, colors }) => (
-    <Animated.View
-      style={[
-        styles.statCard,
+    setIsSubmitting(true);
+    try {
+      const itemRef = doc(db, collectionName, item.id);
+      const itemSnap = await getDoc(itemRef);
+      const currentData = itemSnap.data();
+      
+      const currentAssignments = currentData?.assignedTo || [];
+      const updatedAssignments = [...currentAssignments, assignment];
+      
+      await updateDoc(itemRef, {
+        assignedTo: updatedAssignments,
+        updatedAt: serverTimestamp()
+      });
+      
+      Alert.alert('Succès', 'Employé assigné avec succès');
+      setShowAssignModal(false);
+    } catch (error) {
+      console.error('Erreur assignation:', error);
+      Alert.alert('Erreur', 'Impossible d\'assigner l\'employé');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, []);
+
+  const handleUnassignEmployee = useCallback(async (item: EspaceParent | SousEspace, employeeId: string) => {
+    const isEspace = 'nom' in item;
+    const collectionName = isEspace ? 'espaces' : 'sous_espaces';
+    
+    Alert.alert(
+      "Retirer l'assignation",
+      "Voulez-vous retirer cette assignation ?",
+      [
+        { text: "Annuler", style: "cancel" },
         {
-          opacity: fadeAnim,
-          transform: [{ translateY: slideAnim }]
-        }
-      ]}
-    >
-      <LinearGradient
-        colors={colors}
-        style={styles.statGradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      >
-        <View style={styles.statContent}>
-          <Text style={styles.statIcon}>{icon}</Text>
-          <View style={styles.statTextContainer}>
-            <Text style={styles.statValue}>{value}</Text>
-            <Text style={styles.statLabel}>{label}</Text>
-          </View>
-        </View>
-      </LinearGradient>
-    </Animated.View>
-  );
-
-  const EspaceCard = ({ espace }) => {
-    const categorie = getCategorieById(espace.categorieId);
-    const sousEspacesEnfants = getSousEspacesByParent(espace.id);
-    const isExpanded = expandedEspaces[espace.id];
-
-    return (
-      <Animated.View
-        style={[
-          styles.espaceCard,
-          {
-            opacity: fadeAnim,
-            transform: [{ translateY: slideAnim }]
+          text: "Retirer",
+          style: "destructive",
+          onPress: async () => {
+            setIsSubmitting(true);
+            try {
+              const itemRef = doc(db, collectionName, item.id);
+              const itemSnap = await getDoc(itemRef);
+              const currentData = itemSnap.data();
+              
+              const currentAssignments = currentData?.assignedTo || [];
+              const updatedAssignments = currentAssignments.filter(
+                (assignment: EmployeeAssignment) => assignment.employeeId !== employeeId
+              );
+              
+              await updateDoc(itemRef, {
+                assignedTo: updatedAssignments,
+                updatedAt: serverTimestamp()
+              });
+              
+              Alert.alert('Succès', 'Assignation retirée avec succès');
+            } catch (error) {
+              console.error('Erreur retrait assignation:', error);
+              Alert.alert('Erreur', 'Impossible de retirer l\'assignation');
+            } finally {
+              setIsSubmitting(false);
+            }
           }
-        ]}
-      >
-        <LinearGradient
-          colors={[categorie?.couleur || '#6B7280', darkenColor(categorie?.couleur || '#6B7280', 20)]}
-          style={styles.espaceHeader}
-        >
-          <TouchableOpacity
-            style={styles.espaceHeaderContent}
-            onPress={() => toggleExpand(espace.id)}
-          >
-            <View style={styles.espaceInfo}>
-              <Text style={styles.espaceIcon}>{categorie?.icone || '🏢'}</Text>
-              <View style={styles.espaceTextContainer}>
-                <Text style={styles.espaceNom}>
-                  {espace.nom} {espace.numero && `- ${espace.numero}`}
-                </Text>
-                <View style={styles.espaceTags}>
-                  <Text style={styles.tagText}>{espace.type}</Text>
-                  <Text style={styles.tagText}>•</Text>
-                  <Text style={styles.tagText}>{categorie?.nom}</Text>
-                  <Text style={styles.tagText}>•</Text>
-                  <Text style={styles.tagText}>{sousEspacesEnfants.length} sous-espaces</Text>
-                  {espace.assignations && espace.assignations.length > 0 && (
-                    <>
-                      <Text style={styles.tagText}>•</Text>
-                      <Text style={styles.tagText}>{espace.assignations.length} assign.</Text>
-                    </>
-                  )}
-                </View>
-              </View>
-            </View>
-
-            <Ionicons
-              name={isExpanded ? "chevron-up" : "chevron-down"}
-              size={20}
-              color="white"
-            />
-          </TouchableOpacity>
-        </LinearGradient>
-
-        {isExpanded && (
-          <View style={styles.expandedContent}>
-            <View style={styles.quickActions}>
-              <TouchableOpacity
-                style={styles.quickAction}
-                onPress={() => {
-                  setQrCodeData({ valeur: espace.id, titre: espace.nom });
-                  setShowQRModal(true);
-                }}
-              >
-                <Ionicons name="qr-code" size={16} color="#3B82F6" />
-                <Text style={styles.quickActionText}>QR Code</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.quickAction}
-                onPress={() => {
-                  setSelectedEspace(espace);
-                  setSelectedSousEspace(null);
-                  setShowAssignModal(true);
-                }}
-              >
-                <Ionicons name="person-add" size={16} color="#10B981" />
-                <Text style={styles.quickActionText}>Assigner</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.quickAction}
-                onPress={() => {
-                  resetSousEspaceForm();
-                  setSousEspaceForm(prev => ({ ...prev, espaceParentId: espace.id }));
-                  setShowSousEspaceModal(true);
-                }}
-              >
-                <Ionicons name="add-circle" size={16} color="#F59E0B" />
-                <Text style={styles.quickActionText}>Sous-espace</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.quickAction, styles.deleteAction]}
-                onPress={() => handleDeleteEspace(espace)}
-                disabled={isSubmitting}
-              >
-                <Ionicons name="trash" size={16} color="#EF4444" />
-                <Text style={styles.quickActionText}>Supprimer</Text>
-              </TouchableOpacity>
-            </View>
-
-            {espace.assignations && espace.assignations.length > 0 && (
-              <View style={styles.assignationsContainer}>
-                <Text style={styles.assignationsTitle}>Assignations en cours</Text>
-                {espace.assignations.map((assignation, index) => (
-                  <View key={index} style={styles.assignationItem}>
-                    <View style={styles.assignationInfo}>
-                      <Ionicons name="person" size={14} color="#6B7280" />
-                      <Text style={styles.assignationText}>
-                        {assignation.employeNom} - {assignation.typeTache}
-                      </Text>
-                    </View>
-                    <TouchableOpacity
-                      style={styles.removeButton}
-                      onPress={() => handleRemoveAssignation(espace.id, false, index)}
-                    >
-                      <Ionicons name="close" size={16} color="#FFFFFF" />
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-            )}
-
-            {sousEspacesEnfants.length > 0 && (
-              <View style={styles.sousEspacesContainer}>
-                <Text style={styles.sousEspacesTitle}>Sous-espaces</Text>
-                {sousEspacesEnfants.map(sousEspace => (
-                  <SousEspaceCard
-                    key={sousEspace.id}
-                    sousEspace={sousEspace}
-                    onEdit={setSelectedSousEspace}
-                    onAssign={setSelectedSousEspace}
-                    onShowQR={setQrCodeData}
-                    onDelete={handleDeleteSousEspace}
-                    onRemoveAssignation={handleRemoveAssignation}
-                  />
-                ))}
-              </View>
-            )}
-          </View>
-        )}
-      </Animated.View>
+        }
+      ]
     );
-  };
+  }, []);
 
-  const SousEspaceCard = ({ sousEspace, onEdit, onAssign, onShowQR, onDelete, onRemoveAssignation }) => (
-    <View style={styles.sousEspaceCard}>
-      <View style={styles.sousEspaceMain}>
-        <Text style={styles.sousEspaceIcon}>
-          {typesSousEspace.find(t => t.value === sousEspace.type)?.icon || '🛏️'}
-        </Text>
+  const resetEspaceForm = useCallback(() => {
+    setEspaceForm({ nom: '', type: 'etage', numero: '', categorieId: 'public_client' });
+    setSelectedItem(null);
+  }, []);
 
-        <View style={styles.sousEspaceDetails}>
-          <Text style={styles.sousEspaceNom}>
-            {sousEspace.numero} {sousEspace.nom && `- ${sousEspace.nom}`}
-          </Text>
-          <Text style={styles.sousEspaceInfo}>
-            {sousEspace.type}
-            {sousEspace.superficie && ` • ${sousEspace.superficie}m²`}
-            {sousEspace.capacite && ` • ${sousEspace.capacite} pers.`}
-            {sousEspace.statut && ` • ${sousEspace.statut}`}
-          </Text>
+  const resetSousEspaceForm = useCallback(() => {
+    setSousEspaceForm({ numero: '', type: 'chambre', parentId: '' });
+    setSelectedItem(null);
+  }, []);
 
-          {sousEspace.assignations && sousEspace.assignations.length > 0 && (
-            <View style={styles.sousEspaceAssignations}>
-              {sousEspace.assignations.map((assignation, index) => (
-                <View key={index} style={styles.sousEspaceAssignItem}>
-                  <View style={styles.assignationInfo}>
-                    <Ionicons name="person" size={12} color="#6B7280" />
-                    <Text style={styles.sousEspaceAssignText}>
-                      {assignation.employeNom} ({assignation.typeTache})
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.sousEspaceRemoveButton}
-                    onPress={() => onRemoveAssignation(sousEspace.id, true, index)}
-                  >
-                    <Ionicons name="close" size={14} color="#FFFFFF" />
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-          )}
-        </View>
+  const toggleExpanded = useCallback((espaceId: string) => {
+    setExpandedEspaces(prev => ({ ...prev, [espaceId]: !prev[espaceId] }));
+  }, []);
+
+  const handleEditEspace = useCallback((espace: EspaceParent) => {
+    setSelectedItem(espace);
+    setEspaceForm({
+      nom: espace.nom,
+      type: espace.type,
+      numero: espace.numero || '',
+      categorieId: espace.categorieId
+    });
+    setShowEspaceModal(true);
+  }, []);
+
+  const handleEditSousEspace = useCallback((sousEspace: SousEspace) => {
+    setSelectedItem(sousEspace);
+    setSousEspaceForm({
+      numero: sousEspace.numero,
+      type: sousEspace.type,
+      parentId: sousEspace.espaceParentId
+    });
+    setShowSousEspaceModal(true);
+  }, []);
+
+  const handleAddSousEspace = useCallback((espaceId: string) => {
+    resetSousEspaceForm();
+    setSousEspaceForm(prev => ({ ...prev, parentId: espaceId }));
+    setShowSousEspaceModal(true);
+  }, [resetSousEspaceForm]);
+
+  const handleAssign = useCallback((item: EspaceParent | SousEspace) => {
+    setSelectedItem(item);
+    setShowAssignModal(true);
+  }, []);
+
+  // Filtrage optimisé avec useMemo
+  const filteredEspaces = useMemo(() => {
+    const term = searchTerm.toLowerCase().trim();
+    if (!term) return espaces;
+    
+    return espaces.filter(espace => 
+      espace.nom.toLowerCase().includes(term) ||
+      espace.numero?.toLowerCase().includes(term) ||
+      espace.type.toLowerCase().includes(term)
+    );
+  }, [espaces, searchTerm]);
+
+  // Regroupement des sous-espaces par parent
+  const sousEspacesParParent = useMemo(() => {
+    return sousEspaces.reduce((acc, se) => {
+      if (!acc[se.espaceParentId]) {
+        acc[se.espaceParentId] = [];
+      }
+      acc[se.espaceParentId].push(se);
+      return acc;
+    }, {} as Record<string, SousEspace[]>);
+  }, [sousEspaces]);
+
+  // Render avec FlatList pour optimisation
+  const renderEspace = useCallback(({ item: espace }: { item: EspaceParent }) => (
+    <EspaceCard
+      key={espace.id}
+      espace={espace}
+      sousEspaces={sousEspacesParParent[espace.id] || []}
+      isExpanded={!!expandedEspaces[espace.id]}
+      onToggle={() => toggleExpanded(espace.id)}
+      onAdd={() => handleAddSousEspace(espace.id)}
+      onEdit={() => handleEditEspace(espace)}
+      onQR={() => handleGenerateQR(espace)}
+      onAssign={() => handleAssign(espace)}
+      onDelete={() => handleDeleteEspace(espace)}
+      onEditSousEspace={handleEditSousEspace}
+      onDeleteSousEspace={handleDeleteSousEspace}
+      onQRSousEspace={handleGenerateQR}
+      onAssignSousEspace={handleAssign}
+      onUnassignEmployee={(employeeId) => handleUnassignEmployee(espace, employeeId)}
+      onUnassignSousEspaceEmployee={(sousEspaceId, employeeId) => {
+        const sousEspace = sousEspaces.find(se => se.id === sousEspaceId);
+        if (sousEspace) {
+          handleUnassignEmployee(sousEspace, employeeId);
+        }
+      }}
+    />
+  ), [
+    sousEspacesParParent,
+    expandedEspaces,
+    toggleExpanded,
+    handleAddSousEspace,
+    handleEditEspace,
+    handleGenerateQR,
+    handleAssign,
+    handleDeleteEspace,
+    handleEditSousEspace,
+    handleDeleteSousEspace,
+    handleUnassignEmployee,
+    sousEspaces,
+  ]);
+
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#3B82F6" />
+        <Text style={styles.loadingText}>Chargement des espaces...</Text>
       </View>
-
-      <View style={styles.sousEspaceActions}>
-        <TouchableOpacity
-          style={styles.sousEspaceActionBtn}
-          onPress={() => onShowQR({
-            valeur: sousEspace.id,
-            titre: `${sousEspace.numero} - ${sousEspace.nom || ''}`
-          })} >
-            
-          <Ionicons name="qr-code" size={14} color="#FFFFFF" />
-        </TouchableOpacity>
-
-
-        <TouchableOpacity
-          style={styles.sousEspaceActionBtn}
-          onPress={() => {
-            onAssign(sousEspace);
-            setShowAssignModal(true);
-          }} >
-
-          <Ionicons name="person-add" size={14} color="#FFFFFF" />
-
-        </TouchableOpacity>
-
-
-        <TouchableOpacity
-          style={[styles.sousEspaceActionBtn, { backgroundColor: '#F59E0B' }]}
-          onPress={() => {
-            onEdit(sousEspace);
-            setSousEspaceForm({
-              nom: sousEspace.nom || '',
-              numero: sousEspace.numero || '',
-              type: sousEspace.type || 'chambre',
-              espaceParentId: sousEspace.espaceParentId || '',
-              superficie: sousEspace.superficie || '',
-              capacite: sousEspace.capacite || '',
-              statut: sousEspace.statut || 'libre',
-              equipements: sousEspace.equipements || []
-            });
-            setShowSousEspaceModal(true);
-          }}
-        >
-          <Ionicons name="create" size={14} color="#FFFFFF" />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.sousEspaceActionBtn, { backgroundColor: '#EF4444' }]}
-          onPress={() => onDelete(sousEspace)}
-        >
-          <Ionicons name="trash" size={14} color="#FFFFFF" />
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-
-  // Fonction utilitaire
-  const darkenColor = (color, percent) => {
-    return color;
-  };
+    );
+  }
 
   return (
     <View style={styles.container}>
-      {/* Header avec dégradé */}
-      <LinearGradient
-        colors={['#1E40AF', '#3B82F6']}
-        style={styles.header}
-      >
-        <View style={styles.headerContent}>
-          <View style={styles.headerTop}>
-            <View>
-              <Text style={styles.title}>Gestion des Espaces</Text>
-              <Text style={styles.subtitle}>Organisation hiérarchique</Text>
-            </View>
-            <View style={styles.headerActions}>
+      <LinearGradient colors={['#1E40AF', '#3B82F6']} style={styles.header}>
+        <View style={styles.headerTop}>
+          <Text style={styles.headerTitle}>Gestion des Espaces</Text>
+    <TouchableOpacity
+  style={styles.fabButton}
+  onPress={() => setShowQuickActionMenu(true)}
+>
+  <Ionicons name="add" size={28} color="#3B82F6" />
+</TouchableOpacity>
+        </View>
+        
+        <View style={styles.searchBar}>
+          <Ionicons name="search" size={20} color="#94A3B8" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Rechercher un espace..."
+            placeholderTextColor="#94A3B8"
+            value={searchTerm}
+            onChangeText={setSearchTerm}
+          />
+          {searchTerm.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchTerm('')}>
+              <Ionicons name="close-circle" size={20} color="#94A3B8" />
+            </TouchableOpacity>
+          )}
+        </View>
+      </LinearGradient>
+
+      <FlatList
+        data={filteredEspaces}
+        renderItem={renderEspace}
+        keyExtractor={item => item.id}
+        contentContainerStyle={styles.listContent}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Ionicons name="business-outline" size={64} color="#CBD5E1" />
+            <Text style={styles.emptyText}>
+              {searchTerm ? 'Aucun espace trouvé' : 'Aucun espace créé'}
+            </Text>
+            {!searchTerm && (
               <TouchableOpacity
-                style={styles.headerButton}
+                style={styles.emptyButton}
                 onPress={() => {
                   resetEspaceForm();
                   setShowEspaceModal(true);
                 }}
               >
-                <Ionicons name="business" size={20} color="white" />
+                <Text style={styles.emptyButtonText}>Créer un espace</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.headerButton}
-                onPress={() => setShowCategorieModal(true)}
-              >
-                <Ionicons name="pricetag" size={18} color="white" />
-              </TouchableOpacity>
-            </View>
+            )}
           </View>
-
-          {/* Stats Cards */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.statsContainer}
-          >
-            <StatCard icon="👥" label="Publics" value={stats.public} colors={['#6366F1', '#8B5CF6']} />
-            <StatCard icon="🏢" label="Professionnels" value={stats.professionnel} colors={['#F59E0B', '#D97706']} />
-            <StatCard icon="🛏️" label="Sous-espaces" value={stats.sousEspaces} colors={['#10B981', '#059669']} />
-            <StatCard icon="👤" label="Assignations" value={stats.assignations} colors={['#8B5CF6', '#7C3AED']} />
-          </ScrollView>
-        </View>
-      </LinearGradient>
-
-      {/* Barre de recherche et filtres */}
-      <View style={styles.filtersSection}>
-        <View style={styles.searchBox}>
-          <Ionicons name="search" size={20} color="#6B7280" style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Rechercher un espace..."
-            placeholderTextColor="#9CA3AF"
-            value={searchTerm}
-            onChangeText={setSearchTerm}
-          />
-        </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.categoriesFilter}
-        >
-          <TouchableOpacity
-            style={[
-              styles.filterChip,
-              filterCategorie === 'all' && styles.filterChipActive
-            ]}
-            onPress={() => setFilterCategorie('all')}
-          >
-            <Text style={[
-              styles.filterChipText,
-              filterCategorie === 'all' && styles.filterChipTextActive
-            ]}>
-              Toutes
-            </Text>
-          </TouchableOpacity>
-
-          {categoriesDefaut.map(cat => (
-            <TouchableOpacity
-              key={cat.id}
-              style={[
-                styles.filterChip,
-                { borderColor: cat.couleur },
-                filterCategorie === cat.id && { backgroundColor: cat.couleur }
-              ]}
-              onPress={() => setFilterCategorie(cat.id)}
-            >
-              <Text style={[
-                styles.filterChipText,
-                filterCategorie === cat.id && styles.filterChipTextActive
-              ]}>
-                {cat.icone} {cat.nom}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-
-      {/* Liste des espaces */}
-      <ScrollView
-        style={styles.listContainer}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            colors={['#3B82F6']}
-            tintColor="#3B82F6"
-          />
         }
-        showsVerticalScrollIndicator={false}
-      >
-        {filteredEspaces.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Ionicons name="business-outline" size={64} color="#9CA3AF" />
-            <Text style={styles.emptyTitle}>Aucun espace trouvé</Text>
-            <Text style={styles.emptyText}>
-              {
-                searchTerm || filterCategorie !== 'all'
-                  ? 'Aucun résultat pour votre recherche'
-                  : 'Créez votre premier espace pour commencer'
-              }
-            </Text>
-
-
-            <TouchableOpacity
-              style={styles.emptyButton}
-              onPress={() => {
-                resetEspaceForm();
-                setShowEspaceModal(true);
-              }}   >
-
-
-              <Text style={styles.emptyButtonText}>Créer un espace</Text>
-            </TouchableOpacity>
-          </View>
-
-        ) : (
-          <View style={styles.espacesList}>
-            {filteredEspaces.map(espace => (
-              <EspaceCard key={espace.id} espace={espace} />
-            ))}
-          </View>
-        )}
-      </ScrollView>
-
-      {/* Modals avec style amélioré */}
-      {/* Les modals conservent la même structure mais avec le nouveau style */}
-
-
+      />
 
       {/* Modal Espace Parent */}
-      <Modal visible={showEspaceModal} animationType="slide" transparent>
+      <Modal
+        visible={showEspaceModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => {
+          setShowEspaceModal(false);
+          resetEspaceForm();
+        }}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
-                {selectedEspace ? 'Modifier l\'espace' : 'Nouvel Espace'}
+                {selectedItem && 'nom' in selectedItem ? 'Modifier l\'espace' : 'Nouvel espace'}
               </Text>
               <TouchableOpacity
-                onPress={() => {
-                  setShowEspaceModal(false);
-                  resetEspaceForm();
-                }}  >
-
-
-                <Ionicons name="close" size={24} color="#6B7280" />
-              </TouchableOpacity>
-            </View>
-
-
-            <ScrollView style={styles.modalBody}>
-              {/* Formulaire espace avec style amélioré */}
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Nom de l'espace *</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Ex: Rez-de-chaussée"
-                  value={espaceForm.nom}
-                  onChangeText={(text) => setEspaceForm({ ...espaceForm, nom: text })}
-                />
-              </View>
-
-              {/* ... reste du formulaire inchangé mais avec le nouveau style */}
-            </ScrollView>
-
-            <View style={styles.modalFooter}>
-              <TouchableOpacity
-                style={styles.cancelButton}
                 onPress={() => {
                   setShowEspaceModal(false);
                   resetEspaceForm();
                 }}
               >
-                <Text style={styles.cancelButtonText}>Annuler</Text>
+                <Ionicons name="close" size={24} color="#64748B" />
               </TouchableOpacity>
+            </View>
 
+            <ScrollView style={styles.modalBody}>
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Nom de l'espace *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Ex: Étage 1, Bloc A..."
+                  value={espaceForm.nom}
+                  onChangeText={(text) => setEspaceForm(prev => ({ ...prev, nom: text }))}
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Type d'espace</Text>
+                <View style={styles.typeSelector}>
+                  {['etage', 'bloc', 'aile', 'batiment'].map(type => (
+                    <TouchableOpacity
+                      key={type}
+                      style={[
+                        styles.typeOption,
+                        espaceForm.type === type && styles.typeOptionActive
+                      ]}
+                      onPress={() => setEspaceForm(prev => ({ ...prev, type }))}
+                    >
+                      <Text style={[
+                        styles.typeText,
+                        espaceForm.type === type && styles.typeTextActive
+                      ]}>
+                        {type.charAt(0).toUpperCase() + type.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Numéro (optionnel)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Ex: 001, A1..."
+                  value={espaceForm.numero}
+                  onChangeText={(text) => setEspaceForm(prev => ({ ...prev, numero: text }))}
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Catégorie</Text>
+                <View style={styles.typeSelector}>
+                  {categories.length > 0 ? (
+                    categories.map(cat => (
+                      <TouchableOpacity
+                        key={cat.id}
+                        style={[
+                          styles.typeOption,
+                          espaceForm.categorieId === cat.id && styles.typeOptionActive
+                        ]}
+                        onPress={() => setEspaceForm(prev => ({ ...prev, categorieId: cat.id }))}
+                      >
+                        <Text style={[
+                          styles.typeText,
+                          espaceForm.categorieId === cat.id && styles.typeTextActive
+                        ]}>
+                          {cat.nom}
+                        </Text>
+                      </TouchableOpacity>
+                    ))
+                  ) : (
+                    <Text style={styles.noDataText}>Aucune catégorie disponible</Text>
+                  )}
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
               <TouchableOpacity
-                style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
-                onPress={handleSubmitEspace}
+                style={[styles.button, styles.buttonSecondary]}
+                onPress={() => {
+                  setShowEspaceModal(false);
+                  resetEspaceForm();
+                }}
                 disabled={isSubmitting}
               >
-                <Text style={styles.submitButtonText}>
-                  {isSubmitting ? 'Enregistrement...' : (selectedEspace ? 'Modifier' : 'Créer')}
-                </Text>
+                <Text style={styles.buttonSecondaryText}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.button, styles.buttonPrimary]}
+                onPress={handleSaveEspace}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <Text style={styles.buttonPrimaryText}>
+                    {selectedItem && 'nom' in selectedItem ? 'Modifier' : 'Créer'}
+                  </Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* Autres modals (SousEspace, Catégorie, Assignation, QR) avec le même style moderne */}
+      {/* Modal Sous-Espace */}
+      <Modal
+        visible={showSousEspaceModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => {
+          setShowSousEspaceModal(false);
+          resetSousEspaceForm();
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {selectedItem && 'espaceParentId' in selectedItem ? 'Modifier le sous-espace' : 'Nouveau sous-espace'}
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowSousEspaceModal(false);
+                  resetSousEspaceForm();
+                }}
+              >
+                <Ionicons name="close" size={24} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody}>
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Espace parent *</Text>
+                <View style={styles.pickerContainer}>
+                  <Ionicons name="business" size={20} color="#64748B" />
+                  <View style={styles.pickerWrapper}>
+                    {espaces.map(espace => (
+                      <TouchableOpacity
+                        key={espace.id}
+                        style={[
+                          styles.pickerOption,
+                          sousEspaceForm.parentId === espace.id && styles.pickerOptionSelected
+                        ]}
+                        onPress={() => setSousEspaceForm(prev => ({ ...prev, parentId: espace.id }))}
+                      >
+                        <Text style={[
+                          styles.pickerText,
+                          sousEspaceForm.parentId === espace.id && styles.pickerTextSelected
+                        ]}>
+                          {espace.nom}
+                        </Text>
+                        {sousEspaceForm.parentId === espace.id && (
+                          <Ionicons name="checkmark-circle" size={20} color="#3B82F6" />
+                        )}
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Numéro *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Ex: 101, A12..."
+                  value={sousEspaceForm.numero}
+                  onChangeText={(text) => setSousEspaceForm(prev => ({ ...prev, numero: text }))}
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Type de sous-espace</Text>
+                <View style={styles.typeSelector}>
+                  {['chambre', 'bureau', 'salle', 'local', 'atelier'].map(type => (
+                    <TouchableOpacity
+                      key={type}
+                      style={[
+                        styles.typeOption,
+                        sousEspaceForm.type === type && styles.typeOptionActive
+                      ]}
+                      onPress={() => setSousEspaceForm(prev => ({ ...prev, type }))}
+                    >
+                      <Text style={[
+                        styles.typeText,
+                        sousEspaceForm.type === type && styles.typeTextActive
+                      ]}>
+                        {type.charAt(0).toUpperCase() + type.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={[styles.button, styles.buttonSecondary]}
+                onPress={() => {
+                  setShowSousEspaceModal(false);
+                  resetSousEspaceForm();
+                }}
+                disabled={isSubmitting}
+              >
+                <Text style={styles.buttonSecondaryText}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.button, styles.buttonPrimary]}
+                onPress={handleSaveSousEspace}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <Text style={styles.buttonPrimaryText}>
+                    {selectedItem && 'espaceParentId' in selectedItem ? 'Modifier' : 'Créer'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal d'assignation */}
+      <Modal
+        visible={showAssignModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => {
+          setShowAssignModal(false);
+          setSelectedItem(null);
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Assigner un employé</Text>
+                <Text style={styles.modalSubtitle}>
+                  {selectedItem && ('nom' in selectedItem 
+                    ? selectedItem.nom 
+                    : selectedItem.numero)}
+                </Text>
+                {selectedItem && selectedItem.assignedTo && selectedItem.assignedTo.length > 0 && (
+                  <Text style={styles.currentAssignments}>
+                    Déjà assigné à: {selectedItem.assignedTo.map(a => a.employeeName).join(', ')}
+                  </Text>
+                )}
+              </View>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowAssignModal(false);
+                  setSelectedItem(null);
+                }}
+              >
+                <Ionicons name="close" size={24} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.assignSearchBar}>
+              <Ionicons name="search" size={18} color="#94A3B8" />
+              <TextInput
+                style={styles.assignSearchInput}
+                placeholder="Rechercher un employé..."
+                placeholderTextColor="#94A3B8"
+              />
+            </View>
+
+            <ScrollView style={styles.modalBody}>
+              {employees.length > 0 ? (
+                employees.map(employee => {
+                  const isAssigned = selectedItem?.assignedTo?.some(
+                    (assignment: EmployeeAssignment) => assignment.employeeId === employee.id
+                  );
+                  
+                  return (
+                    <TouchableOpacity
+                      key={employee.id}
+                      style={[
+                        styles.employeeCard,
+                        isAssigned && styles.employeeCardAssigned
+                      ]}
+                      onPress={() => {
+                        if (isAssigned) {
+                          Alert.alert(
+                            'Déjà assigné',
+                            'Cet employé est déjà assigné à cet espace.',
+                            [{ text: 'OK' }]
+                          );
+                        } else if (selectedItem) {
+                          handleAssignEmployee(employee, selectedItem);
+                        }
+                      }}
+                    >
+                      <View style={styles.employeeAvatar}>
+                        <Ionicons name="person" size={24} color="#3B82F6" />
+                      </View>
+                      <View style={styles.employeeInfo}>
+                        <Text style={styles.employeeName}>
+                          {employee.nom || ''} {employee.prenom || ''}
+                        </Text>
+                        <Text style={styles.employeeRole}>
+                          {employee.role || employee.poste || 'Employé'}
+                        </Text>
+                        {employee.email && (
+                          <Text style={styles.employeeEmail}>{employee.email}</Text>
+                        )}
+                      </View>
+                      {isAssigned ? (
+                        <Ionicons name="checkmark-circle" size={24} color="#10B981" />
+                      ) : (
+                        <Ionicons name="add-circle" size={24} color="#3B82F6" />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })
+              ) : (
+                <View style={styles.noEmployees}>
+                  <Ionicons name="people-outline" size={48} color="#CBD5E1" />
+                  <Text style={styles.noEmployeesText}>Aucun employé disponible</Text>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal QR Code */}
+      <Modal
+        visible={showQRModal}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => {
+          setShowQRModal(false);
+          setSelectedQRCode('');
+          setSelectedItemName('');
+        }}
+      >
+        <View style={styles.qrModalOverlay}>
+          <View style={styles.qrModalContent}>
+            <View style={styles.qrModalHeader}>
+              <Text style={styles.qrModalTitle}>QR Code - {selectedItemName}</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowQRModal(false);
+                  setSelectedQRCode('');
+                  setSelectedItemName('');
+                }}
+              >
+                <Ionicons name="close" size={24} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.qrCodeContainer}>
+              {selectedQRCode ? (
+                <QRCode
+                  value={selectedQRCode}
+                  size={250}
+                  color="#000000"
+                  backgroundColor="#FFFFFF"
+                  logoSize={30}
+                  logoMargin={2}
+                  logoBorderRadius={15}
+                  logoBackgroundColor="#FFFFFF"
+                />
+              ) : (
+                <ActivityIndicator size="large" color="#3B82F6" />
+              )}
+            </View>
+            
+            <View style={styles.qrModalFooter}>
+              <TouchableOpacity
+                style={[styles.button, styles.buttonSecondary]}
+                onPress={() => setShowQRModal(false)}
+              >
+                <Text style={styles.buttonSecondaryText}>Fermer</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.button, styles.buttonPrimary]}
+                onPress={() => {
+                  Alert.alert('Info', 'Fonctionnalité de partage à implémenter');
+                }}
+              >
+                <Text style={styles.buttonPrimaryText}>Partager</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+
+{/* Modal Menu d'Actions Rapides */}
+<Modal
+  visible={showQuickActionMenu}
+  animationType="fade"
+  transparent={true}
+  onRequestClose={() => setShowQuickActionMenu(false)}
+>
+  <TouchableOpacity 
+    style={styles.quickMenuOverlay} 
+    activeOpacity={1} 
+    onPress={() => setShowQuickActionMenu(false)}
+  >
+    <View style={styles.quickMenuContainer}>
+      <View style={styles.quickMenuHeader}>
+        <Text style={styles.quickMenuTitle}>Actions Rapides</Text>
+        <Text style={styles.quickMenuSubtitle}>Que souhaitez-vous créer ?</Text>
+      </View>
+
+      <View style={styles.quickActionsGrid}>
+        {/* Action 1: Nouvel Espace */}
+        <TouchableOpacity
+          style={[styles.quickActionCard, { backgroundColor: '#EFF6FF' }]}
+          onPress={() => {
+            setShowQuickActionMenu(false);
+            resetEspaceForm();
+            setShowEspaceModal(true);
+          }}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.quickIconCircle, { backgroundColor: '#3B82F6' }]}>
+            <Ionicons name="business" size={28} color="white" />
+          </View>
+          <View style={styles.quickActionTextContainer}>
+            <Text style={[styles.quickActionTitle, { color: '#3B82F6' }]}>
+              Nouvel Espace
+            </Text>
+            <Text style={styles.quickActionSubtitle}>
+              Créer un étage, bloc...
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color="#3B82F6" />
+        </TouchableOpacity>
+
+        {/* Action 2: Nouveau Sous-espace */}
+        <TouchableOpacity
+          style={[styles.quickActionCard, { backgroundColor: '#ECFDF5' }]}
+          onPress={() => {
+            if (espaces.length === 0) {
+              Alert.alert(
+                'Aucun espace disponible',
+                'Veuillez d\'abord créer un espace parent avant d\'ajouter un sous-espace.'
+              );
+              return;
+            }
+            setShowQuickActionMenu(false);
+            resetSousEspaceForm();
+            setShowSousEspaceModal(true);
+          }}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.quickIconCircle, { backgroundColor: '#10B981' }]}>
+            <Ionicons name="bed" size={28} color="white" />
+          </View>
+          <View style={styles.quickActionTextContainer}>
+            <Text style={[styles.quickActionTitle, { color: '#10B981' }]}>
+              Nouveau Sous-espace
+            </Text>
+            <Text style={styles.quickActionSubtitle}>
+              Ajouter une chambre...
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color="#10B981" />
+        </TouchableOpacity>
+
+        {/* Action 3: Nouvelle Assignation */}
+        <TouchableOpacity
+          style={[styles.quickActionCard, { backgroundColor: '#FEF3C7' }]}
+          onPress={() => {
+            const totalItems = espaces.length + sousEspaces.length;
+            if (totalItems === 0) {
+              Alert.alert(
+                'Aucun espace disponible',
+                'Veuillez d\'abord créer des espaces avant d\'assigner des employés.'
+              );
+              return;
+            }
+            if (employees.length === 0) {
+              Alert.alert(
+                'Aucun employé disponible',
+                'Veuillez d\'abord ajouter des employés dans la section Staff.'
+              );
+              return;
+            }
+            setShowQuickActionMenu(false);
+            // Vous pouvez ouvrir un modal de sélection d'espace/sous-espace
+            Alert.alert(
+              'Assignation',
+              'Sélectionnez un espace dans la liste ci-dessous pour assigner un employé.',
+              [{ text: 'OK' }]
+            );
+          }}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.quickIconCircle, { backgroundColor: '#F59E0B' }]}>
+            <Ionicons name="person-add" size={28} color="white" />
+          </View>
+          <View style={styles.quickActionTextContainer}>
+            <Text style={[styles.quickActionTitle, { color: '#F59E0B' }]}>
+              Nouvelle Assignation
+            </Text>
+            <Text style={styles.quickActionSubtitle}>
+              Assigner un employé
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color="#F59E0B" />
+        </TouchableOpacity>
+      </View>
+
+      <TouchableOpacity 
+        style={styles.quickMenuCloseButton}
+        onPress={() => setShowQuickActionMenu(false)}
+      >
+        <Text style={styles.quickMenuCloseText}>Annuler</Text>
+      </TouchableOpacity>
+    </View>
+  </TouchableOpacity>
+</Modal>
+
+
+
     </View>
   );
 };
 
+// --- COMPOSANT CARTE ESPACE PARENT ---
+interface EspaceCardProps {
+  espace: EspaceParent;
+  sousEspaces: SousEspace[];
+  isExpanded: boolean;
+  onToggle: () => void;
+  onAdd: () => void;
+  onEdit: () => void;
+  onQR: () => void;
+  onAssign: () => void;
+  onDelete: () => void;
+  onEditSousEspace: (se: SousEspace) => void;
+  onDeleteSousEspace: (se: SousEspace) => void;
+  onQRSousEspace: (se: SousEspace) => void;
+  onAssignSousEspace: (se: SousEspace) => void;
+  onUnassignEmployee: (employeeId: string) => void;
+  onUnassignSousEspaceEmployee: (sousEspaceId: string, employeeId: string) => void;
+}
+
+const EspaceCard = React.memo(({
+  espace,
+  sousEspaces,
+  isExpanded,
+  onToggle,
+  onAdd,
+  onEdit,
+  onQR,
+  onAssign,
+  onDelete,
+  onEditSousEspace,
+  onDeleteSousEspace,
+  onQRSousEspace,
+  onAssignSousEspace,
+  onUnassignEmployee,
+  onUnassignSousEspaceEmployee
+}: EspaceCardProps) => (
+  <View style={styles.card}>
+    <View style={styles.cardHeader}>
+      <TouchableOpacity onPress={onToggle} style={styles.cardInfo}>
+        <View style={styles.iconContainer}>
+          <Ionicons name="business" size={24} color="#3B82F6" />
+          {espace.qrCode && (
+            <View style={styles.qrBadge}>
+              <Ionicons name="qr-code" size={10} color="white" />
+            </View>
+          )}
+                      
+                      
+                          
+        </View>
+        <View style={styles.cardTextContainer}>
+          <Text style={styles.espaceNom}>{espace.nom}</Text>
+
+          <View style={styles.assignmentsContainer}>
+
+            {espace.assignedTo && espace.assignedTo.length > 0 ? (
+           
+           <View style={styles.assignmentsList}>
+
+                 {espace.assignedTo.slice(0, 2).map((assignment, index) => (
+                
+                <TouchableOpacity 
+                    key={index} 
+                    style={styles.assignmentBadge}
+                    onPress={() => {
+                      Alert.alert(
+                        'Détails de l\'assignation',
+                        `Employé: ${assignment.employeeName}\nRôle: ${assignment.employeeRole || 'Non spécifié'}\nAssigné le: ${formatDate(assignment.assignedAt)}`,
+                        [{ text: 'OK' }]
+                      );
+
+}} >
 
 
-// Styles modernisés
+
+               
+                    <Text style={styles.assignmentText}>
+                      {assignment.employeeName}
+                    </Text>
+                    <TouchableOpacity 
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        onUnassignEmployee(assignment.employeeId);
+                      }}
+                      style={styles.unassignButton}
+                    >
+                      <Ionicons name="close-circle" size={14} color="#EF4444" />
+                    </TouchableOpacity>
+                  </TouchableOpacity>
+                ))}
+
+                            
+                {espace.assignedTo.length > 2 && (
+                  <Text style={styles.moreAssignmentsText}>
+                    +{espace.assignedTo.length - 2} autres
+                  </Text>
+                )}
+
+
+
+              </View>
+            ) : (
+              <Text style={styles.noAssignmentText}>Non assigné</Text>
+            )}
+          </View>
+          <Text style={styles.espaceSub}>
+            {sousEspaces.length} sous-espace{sousEspaces.length > 1 ? 's' : ''}
+            {espace.numero && ` • N°${espace.numero}`}
+          </Text>
+               
+                 
+        </View>
+        <Ionicons
+          name={isExpanded ? "chevron-up" : "chevron-down"}
+          size={20}
+          color="#94A3B8" />
+
+      </TouchableOpacity>
+
+    </View>
+
+    {/* Actions principales */}
+    <View style={styles.mainActions}>
+      <ActionButton icon="add-circle-outline" label="Ajouter" color="#10B981" onPress={onAdd} />
+      <ActionButton icon="create-outline" label="Modifier" color="#3B82F6" onPress={onEdit} />
+      <ActionButton 
+        icon={espace.qrCode ? "qr-code" : "qr-code-outline"} 
+        label="QR Code" 
+        color="#64748B" 
+        onPress={onQR} 
+      />
+      <ActionButton icon="person-add-outline" label="Assigner" color="#F59E0B" onPress={onAssign} />
+      <ActionButton icon="trash-outline" label="Supprimer" color="#EF4444" onPress={onDelete} />
+    </View>
+
+    {/* Liste des sous-espaces */}
+    {isExpanded && (
+      <View style={styles.expandedArea}>
+        {sousEspaces.length === 0 ? (
+          <View style={styles.noSousEspaces}>
+            <Text style={styles.noSousEspacesText}>Aucun sous-espace</Text>
+            <TouchableOpacity onPress={onAdd} style={styles.addSousEspaceButton}>
+              <Ionicons name="add" size={16} color="#3B82F6" />
+              <Text style={styles.addSousEspaceText}>Ajouter un sous-espace</Text>
+            </TouchableOpacity>
+
+                            
+          </View>
+
+
+
+        ) : (
+          sousEspaces.map((se: SousEspace) => (
+            <SousEspaceRow
+              key={se.id}
+              sousEspace={se}
+              onEdit={() => onEditSousEspace(se)}
+              onDelete={() => onDeleteSousEspace(se)}
+              onQR={() => onQRSousEspace(se)}
+              onAssign={() => onAssignSousEspace(se)}
+              onUnassignEmployee={(employeeId) => onUnassignSousEspaceEmployee(se.id, employeeId)}
+            />
+          ))
+        )}
+      </View>
+    )}
+
+
+
+    
+  </View>
+));
+
+// --- COMPOSANT LIGNE SOUS-ESPACE ---
+interface SousEspaceRowProps {
+  sousEspace: SousEspace;
+  onEdit: () => void;
+  onDelete: () => void;
+  onQR: () => void;
+  onAssign: () => void;
+  onUnassignEmployee: (employeeId: string) => void;
+}
+
+const SousEspaceRow = React.memo(({
+  sousEspace,
+  onEdit,
+  onDelete,
+  onQR,
+  onAssign,
+  onUnassignEmployee
+}: SousEspaceRowProps) => (
+  <View style={styles.sousEspaceRow}>
+    <View style={styles.sousEspaceInfo}>
+      <View>
+        <View style={styles.sousEspaceHeader}>
+          <Ionicons name="bed-outline" size={18} color="#64748B" />
+          <Text style={styles.seText}>
+            {sousEspace.numero} - {sousEspace.type}
+          </Text>
+          {sousEspace.qrCode && (
+            <Ionicons name="qr-code" size={14} color="#10B981" style={styles.qrIndicator} />
+          )}
+        </View>
+        {sousEspace.assignedTo && sousEspace.assignedTo.length > 0 && (
+          <View style={styles.sousEspaceAssignments}>
+            {sousEspace.assignedTo.map((assignment, index) => (
+              <TouchableOpacity 
+                key={index} 
+                style={styles.sousAssignmentBadge}
+                onPress={() => {
+                  Alert.alert(
+                    'Détails de l\'assignation',
+                    `Employé: ${assignment.employeeName}\nRôle: ${assignment.employeeRole || 'Non spécifié'}\nAssigné le: ${formatDate(assignment.assignedAt)}`,
+                    [{ text: 'OK' }]
+                  );
+                }}
+              >
+                <Text style={styles.sousAssignmentText} numberOfLines={1}>
+                  {assignment.employeeName}
+                </Text>
+                <TouchableOpacity 
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    onUnassignEmployee(assignment.employeeId);
+                  }}
+                  style={styles.sousUnassignButton}
+                >
+                  <Ionicons name="close-circle" size={12} color="#EF4444" />
+                </TouchableOpacity>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </View>
+    </View>
+    <View style={styles.sousEspaceActions}>
+      <ActionIcon icon="create-outline" color="#3B82F6" onPress={onEdit} size={18} />
+      <ActionIcon 
+        icon={sousEspace.qrCode ? "qr-code" : "qr-code-outline"} 
+        color={sousEspace.qrCode ? "#10B981" : "#64748B"} 
+        onPress={onQR} 
+        size={18} 
+      />
+      <ActionIcon icon="person-add-outline" color="#F59E0B" onPress={onAssign} size={18} />
+      <ActionIcon icon="trash-outline" color="#EF4444" onPress={onDelete} size={18} />
+    </View>
+
+
+
+  
+
+    
+  </View>
+
+
+
+
+));
+
+// --- COMPOSANT BOUTON D'ACTION ---
+interface ActionButtonProps {
+  icon: string;
+  label: string;
+  color: string;
+  onPress: () => void;
+}
+
+const ActionButton = ({ icon, label, color, onPress }: ActionButtonProps) => (
+  <TouchableOpacity onPress={onPress} style={styles.actionButton}>
+    <Ionicons name={icon as any} size={20} color={color} />
+    <Text style={[styles.actionButtonText, { color }]}>{label}</Text>
+  </TouchableOpacity>
+);
+
+// --- COMPOSANT ICÔNE D'ACTION ---
+interface ActionIconProps {
+  icon: string;
+  color: string;
+  onPress: () => void;
+  size?: number;
+}
+
+const ActionIcon = ({ icon, color, onPress, size = 22 }: ActionIconProps) => (
+  <TouchableOpacity onPress={onPress} style={styles.iconButton}>
+    <Ionicons name={icon as any} size={size} color={color} />
+  </TouchableOpacity>
+);
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F1F5F9'
   },
-
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F1F5F9'
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#64748B'
+  },
   header: {
-    padding: 24,
-    paddingTop: Platform.OS === 'ios' ? 60 : 40,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+    padding: 20,
+    paddingTop: 50,
+    borderBottomLeftRadius: 25,
+    borderBottomRightRadius: 25,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.1,
     shadowRadius: 8,
-    elevation: 8,
+    elevation: 5
   },
-
-  headerContent: {
-    marginTop: 10,
-  },
-
   headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 20,
+    alignItems: 'center',
+    marginBottom: 15
   },
-
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
+  headerTitle: {
     color: 'white',
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: 'rgba(255,255,255,0.9)',
-  },
-  headerActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  headerButton: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  statCard: {
-    borderRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  statGradient: {
-    padding: 16,
-    borderRadius: 16,
-    minWidth: 120,
-    height: 80,
-  },
-  statContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  statIcon: {
-    fontSize: 20,
-    marginRight: 12,
-  },
-  statTextContainer: {
-    flex: 1,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.9)',
-    fontWeight: '500',
-  },
-  statValue: {
     fontSize: 24,
-    fontWeight: 'bold',
-    color: 'white',
+    fontWeight: 'bold'
   },
-  filtersSection: {
-    backgroundColor: 'white',
-    padding: 20,
-    marginHorizontal: 20,
-    marginTop: -20,
-    borderRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+  addButton: {
+    padding: 4
   },
-  searchBox: {
+  searchBar: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F8FAFC',
+    backgroundColor: 'white',
     borderRadius: 12,
-    paddingHorizontal: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  searchIcon: {
-    marginRight: 12,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    height: 45
   },
   searchInput: {
     flex: 1,
-    paddingVertical: 14,
+    marginLeft: 8,
     fontSize: 16,
-    color: '#1F2937',
+    color: '#1E293B'
   },
-  categoriesFilter: {
-    flexDirection: 'row',
-    gap: 8,
+  listContent: {
+    padding: 15,
+    paddingBottom: 30
   },
-  filterChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    backgroundColor: 'white',
-  },
-  filterChipActive: {
-    backgroundColor: '#3B82F6',
-    borderColor: '#3B82F6',
-  },
-  filterChipText: {
-    fontSize: 14,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  filterChipTextActive: {
-    color: 'white',
-  },
-  listContainer: {
-    flex: 1,
-    padding: 20,
-  },
-  espacesList: {
-    gap: 16,
-  },
-  emptyState: {
+  emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 40,
-    backgroundColor: 'white',
-    borderRadius: 16,
-    marginTop: 20,
-  },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#374151',
-    marginBottom: 8,
-    marginTop: 16,
+    paddingVertical: 60
   },
   emptyText: {
     fontSize: 16,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 24,
+    color: '#94A3B8',
+    marginTop: 16,
+    marginBottom: 24
   },
   emptyButton: {
     backgroundColor: '#3B82F6',
     paddingHorizontal: 24,
     paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: 10
   },
   emptyButtonText: {
     color: 'white',
+    fontSize: 16,
+    fontWeight: '600'
+  },
+  card: {
+    backgroundColor: 'white',
+    borderRadius: 15,
+    marginBottom: 12,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    overflow: 'hidden'
+  },
+  cardHeader: {
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9'
+  },
+  cardInfo: {
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+  iconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: '#EFF6FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative'
+  },
+  qrBadge: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    backgroundColor: '#10B981',
+    borderRadius: 8,
+    width: 16,
+    height: 16,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  cardTextContainer: {
+    flex: 1,
+    marginLeft: 12
+  },
+  espaceNom: {
     fontWeight: 'bold',
     fontSize: 16,
+    color: '#1E293B'
   },
-  espaceCard: {
-    borderRadius: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
-    overflow: 'hidden',
+  espaceSub: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginTop: 2
+  },
+  mainActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9'
+  },
+  actionButton: {
+    alignItems: 'center',
+    paddingVertical: 4
+  },
+  actionButtonText: {
+    fontSize: 10,
+    marginTop: 4,
+    fontWeight: '600'
+  },
+  iconButton: {
+    padding: 6,
+    borderRadius: 6
   },
 
-  espaceHeader: {
-    padding: 20,
+  expandedArea: {
+    backgroundColor: '#F8FAFC',
+    paddingHorizontal: 15,
+    paddingVertical: 10
   },
 
-  espaceHeaderContent: {
+  noSousEspaces: {
+    alignItems: 'center',
+    paddingVertical: 20
+  },
+
+  noSousEspacesText: {
+    fontSize: 14,
+    color: '#94A3B8',
+    marginBottom: 12
+  },
+
+  addSousEspaceButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8
+  },
+
+  addSousEspaceText: {
+    fontSize: 14,
+    color: '#3B82F6',
+    fontWeight: '600',
+    marginLeft: 6
+  },
+
+  sousEspaceRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0'
   },
 
-  espaceInfo: {
+  sousEspaceInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
+    flex: 1
   },
-  espaceIcon: {
-    fontSize: 24,
-    marginRight: 12,
+
+  sousEspaceHeader: {
+    flexDirection: 'row',
+    alignItems: 'center'
   },
-  espaceTextContainer: {
-    flex: 1,
+
+  seText: {
+    fontWeight: '600',
+    color: '#475569',
+    marginLeft: 8,
+    fontSize: 14
   },
-  espaceNom: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: 'white',
-    marginBottom: 6,
+
+  qrIndicator: {
+    marginLeft: 4
   },
-  espaceTags: {
+
+  sousEspaceActions: {
+    flexDirection: 'row',
+    gap: 12
+  },
+  
+  // Styles pour les assignations
+  assignmentsContainer: {
+    marginVertical: 4,
+  },
+  assignmentsList: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
+    gap: 4,
   },
-  tagText: {
-    fontSize: 12,
-    color: 'white',
-    fontWeight: '500',
-    marginRight: 8,
-    opacity: 0.9,
-  },
-  expandedContent: {
-    padding: 20,
-    backgroundColor: '#F9FAFB',
-    gap: 16,
-  },
-  quickActions: {
-    flexDirection: 'row',
-    gap: 12,
-    justifyContent: 'space-between',
-  },
-  quickAction: {
-    flex: 1,
-    backgroundColor: 'white',
-    padding: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  deleteAction: {
-    backgroundColor: '#FEF2F2',
-    borderColor: '#FECACA',
-  },
-  quickActionText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#374151',
-  },
-  assignationsContainer: {
-    backgroundColor: 'white',
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  assignationsTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#374151',
-    marginBottom: 12,
-  },
-  assignationItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 8,
-    marginBottom: 8,
-  },
-  assignationInfo: {
+  assignmentBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
-    gap: 8,
-  },
-  assignationText: {
-    fontSize: 14,
-    color: '#374151',
-    fontWeight: '500',
-    flex: 1,
-  },
-  removeButton: {
-    backgroundColor: '#EF4444',
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  sousEspacesContainer: {
-    gap: 12,
-  },
-  sousEspacesTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#374151',
-    marginBottom: 8,
-  },
-  sousEspaceCard: {
-    backgroundColor: 'white',
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  sousEspaceMain: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  sousEspaceIcon: {
-    fontSize: 20,
-    marginRight: 12,
-  },
-  sousEspaceDetails: {
-    flex: 1,
-  },
-  sousEspaceNom: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 4,
-  },
-  sousEspaceInfo: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  sousEspaceAssignations: {
-    marginTop: 8,
-    gap: 6,
-  },
-  sousEspaceAssignItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    paddingVertical: 6,
+    backgroundColor: '#EFF6FF',
     paddingHorizontal: 8,
-    borderRadius: 6,
+    paddingVertical: 4,
+    borderRadius: 12,
+    maxWidth: 120,
   },
-  sousEspaceAssignText: {
+  assignmentText: {
     fontSize: 11,
-    color: '#374151',
+    color: '#1E40AF',
     fontWeight: '500',
-    flex: 1,
+    flexShrink: 1,
+  },
+  unassignButton: {
     marginLeft: 4,
   },
-  sousEspaceRemoveButton: {
-    backgroundColor: '#EF4444',
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 8,
+  sousEspaceAssignments: {
+    marginTop: 4,
   },
-  sousEspaceActions: {
+  sousAssignmentBadge: {
     flexDirection: 'row',
-    gap: 6,
-    marginLeft: 12,
-  },
-  sousEspaceActionBtn: {
-    backgroundColor: '#3B82F6',
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#F0F9FF',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginTop: 2,
+    maxWidth: 100,
   },
-  // Styles pour les modals
+  sousAssignmentText: {
+    fontSize: 10,
+    color: '#0C4A6E',
+    flexShrink: 1,
+  },
+  sousUnassignButton: {
+    marginLeft: 2,
+  },
+  noAssignmentText: {
+    fontSize: 11,
+    color: '#94A3B8',
+    fontStyle: 'italic',
+  },
+  moreAssignmentsText: {
+    fontSize: 11,
+    color: '#64748B',
+    marginLeft: 4,
+  },
+// modal menue
+   overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "flex-end",
+  },
+  // Styles des modales
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
+    justifyContent: 'flex-end'
   },
   modalContent: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '85%',
+    backgroundColor: 'white',
+    borderTopLeftRadius: 25,
+    borderTopRightRadius: 25,
+    maxHeight: '90%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 10
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: '#F1F5F9'
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
-    color: '#1F2937',
+    color: '#1E293B'
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#64748B',
+    marginTop: 4
   },
   modalBody: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    maxHeight: 400,
+    maxHeight: '60%',
+    paddingHorizontal: 20
   },
   modalFooter: {
     flexDirection: 'row',
-    gap: 12,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    justifyContent: 'space-between',
+    padding: 20,
     borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
+    borderTopColor: '#F1F5F9',
+    gap: 12
   },
+  // Formulaires
   formGroup: {
-    marginBottom: 16,
+    marginTop: 20
   },
   label: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#374151',
-    marginBottom: 6,
+    color: '#475569',
+    marginBottom: 8
   },
   input: {
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#F8FAFC',
     borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
     fontSize: 16,
-    color: '#1F2937',
+    color: '#1E293B'
   },
-  cancelButton: {
+  typeSelector: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8
+  },
+  typeOption: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0'
+  },
+  typeOptionActive: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#3B82F6'
+  },
+  typeText: {
+    fontSize: 14,
+    color: '#64748B',
+    fontWeight: '500'
+  },
+  typeTextActive: {
+    color: '#3B82F6',
+    fontWeight: '600'
+  },
+  // Boutons
+  button: {
     flex: 1,
-    backgroundColor: '#6B7280',
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48
+  },
+  buttonPrimary: {
+    backgroundColor: '#3B82F6'
+  },
+  buttonSecondary: {
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0'
+  },
+  buttonPrimaryText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600'
+  },
+  buttonSecondaryText: {
+    color: '#64748B',
+    fontSize: 16,
+    fontWeight: '600'
+  },
+  noDataText: {
+    fontSize: 14,
+    color: '#94A3B8',
+    fontStyle: 'italic',
+    paddingVertical: 12
+  },
+  // Picker personnalisé
+  pickerContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
+    padding: 12
+  },
+  pickerWrapper: {
+    flex: 1,
+    marginLeft: 10
+  },
+  pickerOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingVertical: 12,
+    paddingHorizontal: 12,
     borderRadius: 8,
+    marginBottom: 6
+  },
+  pickerOptionSelected: {
+    backgroundColor: '#EFF6FF'
+  },
+  pickerText: {
+    fontSize: 15,
+    color: '#475569'
+  },
+  pickerTextSelected: {
+    color: '#3B82F6',
+    fontWeight: '600'
+  },
+  // Modal d'assignation
+  assignSearchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    marginHorizontal: 20,
+    marginTop: 15,
+    height: 42
+  },
+  assignSearchInput: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 15,
+    color: '#1E293B'
+  },
+  employeeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 15,
+    marginTop: 15
+  },
+  employeeCardAssigned: {
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#86EFAC'
+  },
+  employeeAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#EFF6FF',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  employeeInfo: {
+    flex: 1,
+    marginLeft: 12
+  },
+  employeeName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1E293B'
+  },
+  employeeRole: {
+    fontSize: 13,
+    color: '#64748B',
+    marginTop: 2
+  },
+  employeeEmail: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginTop: 2
+  },
+
+  noEmployees: {
+    alignItems: 'center',
+    paddingVertical: 40
+  },
+
+  noEmployeesText: {
+    fontSize: 15,
+    color: '#94A3B8',
+    marginTop: 12
+  },
+
+  currentAssignments: {
+    fontSize: 12,
+    color: '#475569',
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
+
+  // Styles pour le modal QR Code
+  qrModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  cancelButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  submitButton: {
-    flex: 1,
-    backgroundColor: '#3B82F6',
-    paddingVertical: 12,
-    borderRadius: 8,
+  qrModalContent: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 20,
+    width: '90%',
+    maxWidth: 400,
     alignItems: 'center',
   },
-  submitButtonDisabled: {
-    backgroundColor: '#9CA3AF',
+  qrModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: 20,
   },
-  submitButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 14,
+  qrModalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1E293B',
+    flex: 1,
   },
+  qrCodeContainer: {
+    padding: 20,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 15,
+    marginVertical: 20,
+  },
+  qrModalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    gap: 10,
+  },
+
+
+  // Styles pour le nouveau bouton FAB
+fabButton: {
+  width: 48,
+  height: 48,
+  borderRadius: 24,
+  backgroundColor: 'white',
+  justifyContent: 'center',
+  alignItems: 'center',
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0.3,
+  shadowRadius: 8,
+  elevation: 8
+},
+
+// Styles du Menu d'Actions Rapides
+quickMenuOverlay: {
+  flex: 1,
+  backgroundColor: 'rgba(0, 0, 0, 0.6)',
+  justifyContent: 'center',
+  alignItems: 'center',
+  padding: 20
+},
+quickMenuContainer: {
+  backgroundColor: 'white',
+  borderRadius: 24,
+  padding: 24,
+  width: '100%',
+  maxWidth: 400,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 10 },
+  shadowOpacity: 0.3,
+  shadowRadius: 20,
+  elevation: 10
+},
+quickMenuHeader: {
+  alignItems: 'center',
+  marginBottom: 24
+},
+quickMenuTitle: {
+  fontSize: 24,
+  fontWeight: 'bold',
+  color: '#1E293B',
+  marginBottom: 8
+},
+quickMenuSubtitle: {
+  fontSize: 14,
+  color: '#64748B',
+  textAlign: 'center'
+},
+quickActionsGrid: {
+  gap: 12,
+  marginBottom: 20
+},
+quickActionCard: {
+  padding: 16,
+  borderRadius: 16,
+  alignItems: 'center',
+  flexDirection: 'row',
+  gap: 12,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.1,
+  shadowRadius: 4,
+  elevation: 2
+},
+quickIconCircle: {
+  width: 56,
+  height: 56,
+  borderRadius: 28,
+  justifyContent: 'center',
+  alignItems: 'center',
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.15,
+  shadowRadius: 4,
+  elevation: 3
+},
+quickActionTextContainer: {
+  flex: 1
+},
+quickActionTitle: {
+  fontSize: 16,
+  fontWeight: '700',
+  marginBottom: 2
+},
+quickActionSubtitle: {
+  fontSize: 12,
+  color: '#64748B'
+},
+quickMenuCloseButton: {
+  backgroundColor: '#F1F5F9',
+  paddingVertical: 14,
+  borderRadius: 12,
+  alignItems: 'center'
+},
+quickMenuCloseText: {
+  fontSize: 16,
+  fontWeight: '600',
+  color: '#64748B'
+}
+
+
 });
 
 export default GestionEspacesHierarchie;

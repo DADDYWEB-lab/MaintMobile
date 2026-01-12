@@ -1,11 +1,9 @@
-// GestionFournisseurs.tsx
-// @ts-nocheck
-
-import React, { useState, useEffect, useRef } from 'react';
+//@ts-nocheck
+import React, { useState, useEffect, useMemo } from "react";
 import {
   View,
   Text,
-  ScrollView,
+  FlatList,
   StyleSheet,
   TouchableOpacity,
   TextInput,
@@ -13,2039 +11,2067 @@ import {
   Alert,
   RefreshControl,
   Platform,
-  Dimensions,
   Image,
-  Animated
-} from 'react-native';
+  ActivityIndicator,
+  Linking,
+  ScrollView,
+  StatusBar,
+} from "react-native";
 import {
-  collection, query, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp
-} from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../../../firebaseConfig';
-import * as ImagePicker from 'expo-image-picker';
-import { LinearGradient } from 'expo-linear-gradient';
+  collection,
+  onSnapshot,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+  serverTimestamp,
+  writeBatch,
+  getDocs,
+  query,
+  where,
+} from "firebase/firestore";
+import {
+  ref,
+  uploadBytes,
+  getDownloadURL,
+  deleteObject,
+} from "firebase/storage";
+import { db, storage } from "../../../firebaseConfig";
 
-const { width } = Dimensions.get('window');
+import * as ImagePicker from "expo-image-picker";
+import ScreenHeader from "../Components/ScreenHeader";
+// ==================== TYPES ====================
+interface Fournisseur {
+  id: string;
+  nomEntreprise: string;
+  telephone?: string;
+  email?: string;
+  adresse?: string;
+  siteWeb?: string;
+  description?: string;
+  logo?: string;
+  categorieId: string;
+  createdAt: any;
+  updatedAt?: any;
 
-// Composant Icon personnalisé avec des emojis
-const Icon = ({ name, size = 24, color = '#000' }) => {
-  const icons = {
-    'search': '🔍',
-    'filter': '⚙️',
-    'close': '✕',
-    'add': '+',
-    'business': '🏢',
-    'cube': '📦',
-    'pricetag': '🏷️',
-    'chevron-down': '▼',
-    'chevron-up': '▲',
-    'call': '📞',
-    'mail': '✉️',
-    'create': '✏️',
-    'trash': '🗑️',
-    'add-circle': '➕',
-    'close-circle': '❌',
-    'eye': '🔍',
-    'eye-off': '🔍',
-    'download': '📥',
-    'cloud-upload': '📤',
-    'globe': '🌐',
-    'checkmark-circle': '✅',
-    'close-circle': '❌',
-    'business-outline': '🏢'
+  nomRepresentant?: string;
+  emailRepresentant?: string;
+  telRepresentant?: string;
+}
+
+interface Produit {
+  id: string;
+  reference: string;
+  nom: string;
+  prix: number;
+  stock: number;
+  seuilMin: number;
+  unite: string;
+  logo?: string;
+  fournisseurId: string;
+}
+
+interface Categorie {
+  id: string;
+  nom: string;
+  couleur: string;
+  icone: string;
+}
+
+// ==================== ICONS ====================
+const Icon = ({ name, size = 24, color = "#000" }: any) => {
+  const icons: Record<string, string> = {
+    search: "🔍",
+    close: "✕",
+    add: "+",
+    business: "🏢",
+    cube: "📦",
+    trash: "🗑️",
+    create: "✏️",
+    call: "📞",
+    mail: "✉️",
+    globe: "🌐",
+    upload: "📤",
+    alert: "⚠️",
+    "chevron-down": "▼",
+    "chevron-up": "▲",
+    checkmark: "✓",
   };
-  
-  return <Text style={{ fontSize: size * 0.8, color }}>{icons[name] || '•'}</Text>;
+  return (
+    <Text style={{ fontSize: size * 0.8, color }}>{icons[name] || "•"}</Text>
+  );
 };
 
-const GestionFournisseurs = ({ navigation }: any) => {
-  const [fournisseurs, setFournisseurs] = useState([]);
-  const [produits, setProduits] = useState([]);
-  const [categories, setCategories] = useState([]);
+// ==================== VALIDATION ====================
+const isValidEmail = (email: string) =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+const isValidPhone = (phone: string) => /^[+]?[0-9\s-]{10,}$/.test(phone);
+const isValidUrl = (url: string) => {
+  try {
+    new URL(url);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+// ==================== MAIN COMPONENT ====================
+const GestionFournisseurs = ({ navigation }: { navigation: any }) => {
+  // --- STATES ---
+  const [fournisseurs, setFournisseurs] = useState<Fournisseur[]>([]);
+  const [produits, setProduits] = useState<Produit[]>([]);
+  const [categories, setCategories] = useState<Categorie[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterCategorie, setFilterCategorie] = useState("all");
+  const [expandedFournisseurs, setExpandedFournisseurs] = useState<
+    Record<string, boolean>
+  >({});
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterCategorie, setFilterCategorie] = useState('all');
-  const [expandedFournisseurs, setExpandedFournisseurs] = useState({});
-
+  // --- MODALS ---
+  const [showActionMenu, setShowActionMenu] = useState(false);
   const [showFournisseurModal, setShowFournisseurModal] = useState(false);
   const [showProduitModal, setShowProduitModal] = useState(false);
   const [showCategorieModal, setShowCategorieModal] = useState(false);
 
-  const [selectedFournisseur, setSelectedFournisseur] = useState(null);
-  const [selectedProduit, setSelectedProduit] = useState(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [uploadingLogo, setUploadingLogo] = useState(false);
-  const [afficherRecherche, setAfficherRecherche] = useState(true);
+  // --- FORMS ---
+  const [selectedFournisseur, setSelectedFournisseur] =
+    useState<Fournisseur | null>(null);
+  const [selectedProduit, setSelectedProduit] = useState<Produit | null>(null);
+  const [fForm, setFForm] = useState({
+    nomEntreprise: "",
+    telephone: "",
+    email: "",
+    adresse: "",
+    siteWeb: "",
+    description: "",
+    categorieId: "",
+    logo: "",
+    nomRepresentant: "",
+    emailRepresentant: "",
+    telRepresentant: "",
+  });
 
-  // Nouvel état pour le menu FAB
-  const [showActionMenu, setShowActionMenu] = useState(false);
+  const [pForm, setPForm] = useState({
+    reference: "",
+    nom: "",
+    prix: "",
+    stock: "0",
+    seuilMin: "10",
+    unite: "unite",
+    fournisseurId: "",
+    logo: "",
+  });
+  const [cForm, setCForm] = useState({
+    nom: "",
+    couleur: "#3B82F6",
+    icone: "📦",
+  });
 
-  // Animations
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(50)).current;
-
+  // --- IMAGE UPLOAD STATE ---
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [showUnitePicker, setShowUnitePicker] = useState(false);
+  const unites = ["kg", "litre", "mètre", "carton", "boîte"];
+  // ==================== FIREBASE LISTENERS ====================
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 600,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 500,
-        useNativeDriver: true,
-      })
-    ]).start();
-  }, []);
+    setLoading(true);
 
-  // Formulaires
-  const [fournisseurForm, setFournisseurForm] = useState({
-    nomEntreprise: '',
-    logo: '',
-    telephone: '',
-    email: '',
-    siteWeb: '',
-    adresse: '',
-    categorieId: '',
-    description: '',
-    statut: 'actif'
-  });
+    const unsubF = onSnapshot(
+      collection(db, "fournisseurs"),
+      (snapshot) => {
+        setFournisseurs(
+          snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Fournisseur))
+        );
+        setLoading(false);
+        setError(null);
+      },
+      (err) => {
+        console.error("Erreur fournisseurs:", err);
+        setError("Impossible de charger les fournisseurs");
+        setLoading(false);
+      }
+    );
 
-  const [produitForm, setProduitForm] = useState({
-    reference: '',
-    nom: '',
-    unite: 'unite',
-    prix: '',
-    logo: '',
-    fournisseurId: '',
-    categorieId: '',
-    description: '',
-    stock: 0
-  });
+    const unsubP = onSnapshot(
+      collection(db, "produits"),
+      (snapshot) =>
+        setProduits(
+          snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Produit))
+        ),
+      (err) => console.error("Erreur produits:", err)
+    );
 
-  const [categorieForm, setCategorieForm] = useState({
-    nom: '',
-    couleur: '#3B82F6',
-    icone: '📦'
-  });
-
-  // Données statiques
-  const typesUnite = [
-    { value: 'unite', label: 'Unité' },
-    { value: 'kg', label: 'Kilogramme' },
-    { value: 'litre', label: 'Litre' },
-    { value: 'metre', label: 'Mètre' },
-    { value: 'carton', label: 'Carton' },
-    { value: 'paquet', label: 'Paquet' }
-  ];
-
-  const categoriesDefaut = [
-    {
-      id: 'alimentaire',
-      nom: 'Alimentaire',
-      couleur: '#10B981',
-      icone: '🍽️',
-      exemples: 'Fruits, Légumes, Produits laitiers'
-    },
-    {
-      id: 'nettoyage',
-      nom: 'Produits de nettoyage',
-      couleur: '#3B82F6',
-      icone: '🧹',
-      exemples: 'Détergents, Désinfectants, Matériel'
-    },
-    {
-      id: 'equipement',
-      nom: 'Équipement',
-      couleur: '#F59E0B',
-      icone: '🏢',
-      exemples: 'Mobilier, Machines, Équipements'
-    },
-    {
-      id: 'fournitures',
-      nom: 'Fournitures',
-      couleur: '#8B5CF6',
-      icone: '📦',
-      exemples: 'Papeterie, Consommables, Matériel bureau'
-    }
-  ];
-
-  const iconesDisponibles = [
-    { value: '🍽️', label: 'Restaurant' },
-    { value: '🧹', label: 'Nettoyage' },
-    { value: '🏢', label: 'Business' },
-    { value: '📦', label: 'Inventaire' },
-    { value: '🚚', label: 'Livraison' },
-    { value: '🏷️', label: 'Catégorie' },
-    { value: '💊', label: 'Médical' },
-    { value: '👕', label: 'Textile' },
-    { value: '🔧', label: 'Outils' },
-    { value: '💡', label: 'Éclairage' }
-  ];
-
-  // Récupérer les données
-  useEffect(() => {
-    const unsubFournisseurs = onSnapshot(query(collection(db, 'fournisseurs')), (snapshot) => {
-      setFournisseurs(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-
-    const unsubProduits = onSnapshot(query(collection(db, 'produits')), (snapshot) => {
-      setProduits(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-
-    const unsubCategories = onSnapshot(query(collection(db, 'categories_fournisseurs')), (snapshot) => {
-      const customCats = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setCategories([...categoriesDefaut, ...customCats]);
-    });
+    const unsubC = onSnapshot(
+      collection(db, "categories_fournisseurs"),
+      (snapshot) =>
+        setCategories(
+          snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Categorie))
+        ),
+      (err) => console.error("Erreur catégories:", err)
+    );
 
     return () => {
-      unsubFournisseurs();
-      unsubProduits();
-      unsubCategories();
+      unsubF();
+      unsubP();
+      unsubC();
     };
   }, []);
 
-  // Fonction de rafraîchissement
-  const onRefresh = React.useCallback(() => {
-    setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 1000);
-  }, []);
+  // ==================== COMPUTED VALUES ====================
+  const filteredData = useMemo(() => {
+    return fournisseurs.filter(
+      (f) =>
+        (filterCategorie === "all" || f.categorieId === filterCategorie) &&
+        f.nomEntreprise?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [fournisseurs, searchTerm, filterCategorie]);
 
-  // Fonctions utilitaires
-  const getProduitsByFournisseur = (fournisseurId) => {
-    return produits.filter(p => p.fournisseurId === fournisseurId);
-  };
+  const stats = useMemo(
+    () => ({
+      totalFournisseurs: fournisseurs.length,
+      totalProduits: produits.length,
+      valeurStock: produits
+        .reduce((s, p) => s + p.prix * p.stock, 0)
+        .toFixed(2),
+      produitsAlerte: produits.filter((p) => p.stock <= p.seuilMin).length,
+    }),
+    [fournisseurs, produits]
+  );
 
-  const getCategorieById = (catId) => {
-    return categories.find(c => c.id === catId);
-  };
-
-  const toggleExpand = (fournisseurId) => {
-    setExpandedFournisseurs(prev => ({ 
-      ...prev, 
-      [fournisseurId]: !prev[fournisseurId] 
-    }));
-  };
-
-  const resetFournisseurForm = () => {
-    setFournisseurForm({ 
-      nomEntreprise: '', logo: '', telephone: '', email: '', 
-      siteWeb: '', adresse: '', categorieId: '', description: '', statut: 'actif' 
-    });
-    setSelectedFournisseur(null);
-  };
-
-  const resetProduitForm = () => {
-    setProduitForm({ 
-      reference: '', nom: '', unite: 'unite', prix: '', logo: '', 
-      fournisseurId: '', categorieId: '', description: '', stock: 0 
-    });
-    setSelectedProduit(null);
-  };
-
-  const resetCategorieForm = () => {
-    setCategorieForm({ nom: '', couleur: '#3B82F6', icone: '📦' });
-  };
-
-  // Fonction pour uploader une image
-  const uploadImage = async (uri, folder) => {
+  // ==================== IMAGE UPLOAD ====================
+  const pickAndUploadImage = async (isForFournisseur = true) => {
     try {
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      
-      const timestamp = Date.now();
-      const fileName = `${folder}/${timestamp}.jpg`;
-      const storageRef = ref(storage, fileName);
-      
-      const snapshot = await uploadBytes(storageRef, blob);
-      const downloadURL = await getDownloadURL(snapshot.ref);
-      
-      return downloadURL;
-    } catch (error) {
-      console.error('Erreur lors de l\'upload:', error);
-      throw error;
-    }
-  };
-
-  const pickImage = async (isFournisseur = true) => {
-    try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      
-      if (status !== 'granted') {
-        Alert.alert('Permission requise', 'L\'accès à la galerie est nécessaire pour sélectionner une image.');
+      // 1. Demander la permission (Essentiel)
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Permission requise",
+          "Nous avons besoin de votre accès à la galerie."
+        );
         return;
       }
 
+      // 2. Lancer la galerie
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.8,
+        quality: 0.7, // Réduire un peu la qualité réduit la taille du fichier et évite les crashs
       });
 
-      if (!result.canceled) {
-        setUploadingLogo(true);
-        const imageUrl = await uploadImage(result.assets[0].uri, isFournisseur ? 'fournisseurs' : 'produits');
-        
-        if (isFournisseur) {
-          setFournisseurForm(prev => ({ ...prev, logo: imageUrl }));
-        } else {
-          setProduitForm(prev => ({ ...prev, logo: imageUrl }));
-        }
-      }
-    } catch (error) {
-      Alert.alert('Erreur', 'Erreur lors de la sélection de l\'image: ' + error.message);
-    } finally {
-      setUploadingLogo(false);
-    }
-  };
+      if (result.canceled || !result.assets[0].uri) return;
 
-  // Supprimer les logos
-  const handleRemoveLogoFournisseur = () => {
-    setFournisseurForm(prev => ({ ...prev, logo: '' }));
-  };
+      setUploadingImage(true);
 
-  const handleRemoveLogoProduit = () => {
-    setProduitForm(prev => ({ ...prev, logo: '' }));
-  };
+      // 3. Conversion de l'URI en Blob (Compatible Android/iOS)
+      const uri = result.assets[0].uri;
+      const response = await fetch(uri);
+      const blob = await response.blob();
 
-  // Fonction pour assombrir les couleurs
-  const darkenColor = (color, percent) => {
-    const num = parseInt(color.replace("#", ""), 16);
-    const amt = Math.round(2.55 * percent);
-    const R = (num >> 16) - amt;
-    const G = ((num >> 8) & 0x00FF) - amt;
-    const B = (num & 0x0000FF) - amt;
-    return "#" + (
-      0x1000000 +
-      (R < 255 ? (R < 0 ? 0 : R) : 255) * 0x10000 +
-      (G < 255 ? (G < 0 ? 0 : G) : 255) * 0x100 +
-      (B < 255 ? (B < 0 ? 0 : B) : 255)
-    ).toString(16).slice(1);
-  };
+      // 4. Création du chemin de stockage
+      const timestamp = Date.now();
+      const folder = isForFournisseur ? "fournisseurs" : "produits";
+      const storageRef = ref(storage, `${folder}/${timestamp}.jpg`);
 
-  // Validation des formulaires
-  const isValidEmail = (email) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  };
+      // 5. Upload
+      await uploadBytes(storageRef, blob);
 
-  const validateFournisseurForm = () => {
-    if (!fournisseurForm.nomEntreprise.trim()) {
-      Alert.alert('Erreur', 'Le nom de l\'entreprise est obligatoire');
-      return false;
-    }
-    if (!fournisseurForm.categorieId) {
-      Alert.alert('Erreur', 'Veuillez sélectionner une catégorie');
-      return false;
-    }
-    if (fournisseurForm.email && !isValidEmail(fournisseurForm.email)) {
-      Alert.alert('Erreur', 'L\'adresse email n\'est pas valide');
-      return false;
-    }
-    return true;
-  };
+      // 6. Récupérer l'URL publique
+      const downloadURL = await getDownloadURL(storageRef);
 
-  const validateProduitForm = () => {
-    if (!produitForm.reference.trim()) {
-      Alert.alert('Erreur', 'La référence du produit est obligatoire');
-      return false;
-    }
-    if (!produitForm.fournisseurId) {
-      Alert.alert('Erreur', 'Veuillez sélectionner un fournisseur');
-      return false;
-    }
-    if (produitForm.prix && isNaN(parseFloat(produitForm.prix))) {
-      Alert.alert('Erreur', 'Le prix doit être un nombre valide');
-      return false;
-    }
-    return true;
-  };
-
-  // Gestion des fournisseurs
-  const handleSubmitFournisseur = async () => {
-    if (!validateFournisseurForm()) return;
-
-    setIsSubmitting(true);
-    try {
-      const fournisseurData = {
-        ...fournisseurForm,
-        updatedAt: serverTimestamp()
-      };
-
-      if (selectedFournisseur) {
-        // Modification
-        await updateDoc(doc(db, 'fournisseurs', selectedFournisseur.id), fournisseurData);
-        Alert.alert('Succès', 'Fournisseur modifié avec succès !');
+      // 7. Mettre à jour le formulaire correspondant
+      if (isForFournisseur) {
+        setFForm((prev) => ({ ...prev, logo: downloadURL }));
       } else {
-        // Création
-        await addDoc(collection(db, 'fournisseurs'), {
-          ...fournisseurData,
-          createdAt: serverTimestamp()
-        });
-        Alert.alert('Succès', 'Fournisseur créé avec succès !');
+        setPForm((prev) => ({ ...prev, logo: downloadURL }));
       }
 
-      setShowFournisseurModal(false);
-      resetFournisseurForm();
-    } catch (error) {
-      console.error('Erreur:', error);
-      Alert.alert('Erreur', 'Une erreur est survenue: ' + error.message);
-    } finally {
-      setIsSubmitting(false);
+      setUploadingImage(false);
+      Alert.alert("Succès", "Image téléchargée avec succès");
+    } catch (err: any) {
+      setUploadingImage(false);
+      console.error("Erreur Upload Detail:", err);
+      Alert.alert("Erreur", "L'upload a échoué : " + err.message);
     }
   };
 
-  // Gestion des produits
-  const handleSubmitProduit = async () => {
-    if (!validateProduitForm()) return;
-
-    setIsSubmitting(true);
-    try {
-      const produitData = {
-        ...produitForm,
-        prix: produitForm.prix ? parseFloat(produitForm.prix) : 0,
-        stock: parseInt(produitForm.stock) || 0,
-        updatedAt: serverTimestamp()
-      };
-
-      if (selectedProduit) {
-        // Modification
-        await updateDoc(doc(db, 'produits', selectedProduit.id), produitData);
-        Alert.alert('Succès', 'Produit modifié avec succès !');
-      } else {
-        // Création
-        await addDoc(collection(db, 'produits'), {
-          ...produitData,
-          createdAt: serverTimestamp()
-        });
-        Alert.alert('Succès', 'Produit créé avec succès !');
-      }
-
-      setShowProduitModal(false);
-      resetProduitForm();
-    } catch (error) {
-      console.error('Erreur:', error);
-      Alert.alert('Erreur', 'Une erreur est survenue: ' + error.message);
-    } finally {
-      setIsSubmitting(false);
-    }
+  // ==================== VALIDATION ====================
+  const validateFournisseur = (data: any): string[] => {
+    const errors = [];
+    if (!data.nomEntreprise?.trim()) errors.push("Nom de l'entreprise requis");
+    if (data.nomEntreprise?.length < 2)
+      errors.push("Nom trop court (min 2 caractères)");
+    if (!data.categorieId) errors.push("Catégorie requise");
+    if (data.email && !isValidEmail(data.email)) errors.push("Email invalide");
+    if (data.telephone && !isValidPhone(data.telephone))
+      errors.push("Téléphone invalide");
+    if (data.siteWeb && !isValidUrl(data.siteWeb))
+      errors.push("URL du site invalide");
+    return errors;
   };
 
-  // Gestion des catégories
-  const handleSubmitCategorie = async () => {
-    if (!categorieForm.nom) {
-      Alert.alert('Erreur', 'Veuillez entrer un nom pour la catégorie');
+  const validateProduit = (data: any): string[] => {
+    const errors = [];
+    if (!data.nom?.trim()) errors.push("Nom du produit requis");
+    if (!data.fournisseurId) errors.push("Fournisseur requis");
+    if (
+      data.prix &&
+      (isNaN(parseFloat(data.prix)) || parseFloat(data.prix) < 0)
+    ) {
+      errors.push("Prix invalide");
+    }
+    return errors;
+  };
+
+  // ==================== CRUD OPERATIONS ====================
+  const saveFournisseur = async () => {
+    const errors = validateFournisseur(fForm);
+    if (errors.length > 0) {
+      Alert.alert("Erreur de validation", errors.join("\n"));
       return;
     }
 
-    setIsSubmitting(true);
     try {
-      await addDoc(collection(db, 'categories_fournisseurs'), {
-        ...categorieForm,
-        custom: true,
-        createdAt: serverTimestamp()
-      });
-      Alert.alert('Succès', 'Catégorie créée avec succès !');
-      setShowCategorieModal(false);
-      resetCategorieForm();
-    } catch (error) {
-      console.error('Erreur:', error);
-      Alert.alert('Erreur', 'Une erreur est survenue: ' + error.message);
-    } finally {
-      setIsSubmitting(false);
+      if (selectedFournisseur) {
+        await updateDoc(doc(db, "fournisseurs", selectedFournisseur.id), {
+          ...fForm,
+          updatedAt: serverTimestamp(),
+        });
+        Alert.alert("Succès", "Fournisseur modifié");
+      } else {
+        await addDoc(collection(db, "fournisseurs"), {
+          ...fForm,
+          createdAt: serverTimestamp(),
+        });
+        Alert.alert("Succès", "Fournisseur créé");
+      }
+      resetFournisseurForm();
+    } catch (e: any) {
+      Alert.alert("Erreur", e.message);
     }
   };
 
-  // Suppression
-  const handleDeleteFournisseur = async (fournisseur) => {
+  const saveProduit = async () => {
+    const errors = validateProduit(pForm);
+    if (errors.length > 0) {
+      Alert.alert("Erreur de validation", errors.join("\n"));
+      return;
+    }
+
+    try {
+      const produitData = {
+        ...pForm,
+        prix: parseFloat(pForm.prix) || 0,
+        stock: parseInt(pForm.stock) || 0,
+        seuilMin: parseInt(pForm.seuilMin) || 10,
+      };
+
+      if (selectedProduit) {
+        await updateDoc(doc(db, "produits", selectedProduit.id), produitData);
+        Alert.alert("Succès", "Produit modifié");
+      } else {
+        await addDoc(collection(db, "produits"), produitData);
+        Alert.alert("Succès", "Produit créé");
+      }
+      resetProduitForm();
+    } catch (e: any) {
+      Alert.alert("Erreur", e.message);
+    }
+  };
+
+  const deleteFournisseur = async (fournisseur: Fournisseur) => {
+    const supplierProducts = produits.filter(
+      (p) => p.fournisseurId === fournisseur.id
+    );
+
     Alert.alert(
-      'Confirmer la suppression',
-      `Êtes-vous sûr de vouloir supprimer le fournisseur "${fournisseur.nomEntreprise}" ?\n\n` +
-      `Cette action supprimera :\n` +
-      `• Le fournisseur\n` +
-      `• Tous les produits associés (${getProduitsByFournisseur(fournisseur.id).length} produit(s))\n\n` +
-      `Cette action est irréversible !`,
+      "Confirmer la suppression",
+      `Supprimer "${fournisseur.nomEntreprise}" ?\n\n` +
+        `${supplierProducts.length} produit(s) associé(s) seront également supprimés.`,
       [
-        { text: 'Annuler', style: 'cancel' },
+        { text: "Annuler", style: "cancel" },
         {
-          text: 'Supprimer',
-          style: 'destructive',
+          text: "Supprimer",
+          style: "destructive",
           onPress: async () => {
             try {
-              setIsSubmitting(true);
-
-              const produitsAssocies = getProduitsByFournisseur(fournisseur.id);
-              const deletePromises = produitsAssocies.map(produit =>
-                deleteDoc(doc(db, 'produits', produit.id))
+              // Supprimer les produits associés
+              const batch = writeBatch(db);
+              const produitsQuery = query(
+                collection(db, "produits"),
+                where("fournisseurId", "==", fournisseur.id)
               );
+              const produitsSnapshot = await getDocs(produitsQuery);
+              produitsSnapshot.docs.forEach((doc) => batch.delete(doc.ref));
 
-              deletePromises.push(deleteDoc(doc(db, 'fournisseurs', fournisseur.id)));
+              // Supprimer le fournisseur
+              batch.delete(doc(db, "fournisseurs", fournisseur.id));
+              await batch.commit();
 
-              await Promise.all(deletePromises);
+              // Supprimer l'image si elle existe
+              if (fournisseur.logo) {
+                try {
+                  await deleteObject(ref(storage, fournisseur.logo));
+                } catch (err) {
+                  console.warn("Erreur suppression image:", err);
+                }
+              }
 
-              Alert.alert('Succès', 'Fournisseur et produits supprimés avec succès !');
-            } catch (error) {
-              console.error('Erreur lors de la suppression:', error);
-              Alert.alert('Erreur', error.message);
-            } finally {
-              setIsSubmitting(false);
+              Alert.alert("Succès", "Fournisseur supprimé");
+            } catch (e: any) {
+              Alert.alert("Erreur", e.message);
             }
-          }
-        }
+          },
+        },
       ]
     );
   };
 
-  const handleDeleteProduit = async (produit) => {
-    Alert.alert(
-      'Confirmer la suppression',
-      `Supprimer le produit "${produit.reference} - ${produit.nom}" ?`,
-      [
-        { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Supprimer',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteDoc(doc(db, 'produits', produit.id));
-              Alert.alert('Succès', 'Produit supprimé avec succès !');
-            } catch (error) {
-              Alert.alert('Erreur', error.message);
+  const deleteProduit = async (produit: Produit) => {
+    Alert.alert("Confirmer", `Supprimer "${produit.nom}" ?`, [
+      { text: "Annuler", style: "cancel" },
+      {
+        text: "Supprimer",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await deleteDoc(doc(db, "produits", produit.id));
+            if (produit.logo) {
+              try {
+                await deleteObject(ref(storage, produit.logo));
+              } catch (err) {
+                console.warn("Erreur suppression image:", err);
+              }
             }
+            Alert.alert("Succès", "Produit supprimé");
+          } catch (e: any) {
+            Alert.alert("Erreur", e.message);
           }
-        }
-      ]
-    );
+        },
+      },
+    ]);
   };
 
-  const renderLogo = (logoUrl, defaultIcon, size = 24) => {
-    if (logoUrl) {
-      return (
-        <Image 
-          source={{ uri: logoUrl }} 
-          style={{ 
-            width: size, 
-            height: size, 
-            borderRadius: 8,
-            resizeMode: 'cover'
-          }} 
-        />
-      );
+  const saveCategorie = async () => {
+    if (!cForm.nom.trim()) {
+      Alert.alert("Erreur", "Nom de catégorie requis");
+      return;
     }
+    try {
+      await addDoc(collection(db, "categories_fournisseurs"), cForm);
+      Alert.alert("Succès", "Catégorie créée");
+      setShowCategorieModal(false);
+      setCForm({ nom: "", couleur: "#3B82F6", icone: "📦" });
+    } catch (e: any) {
+      Alert.alert("Erreur", e.message);
+    }
+  };
+
+  // ==================== FORM RESET ====================
+  const resetFournisseurForm = () => {
+    setShowFournisseurModal(false);
+    setSelectedFournisseur(null);
+    setFForm({
+      nomEntreprise: "",
+      telephone: "",
+      email: "",
+      adresse: "",
+      siteWeb: "",
+      description: "",
+      categorieId: "",
+      logo: "",
+      nomRepresentant: "",
+      emailRepresentant: "",
+      telRepresentant: "",
+    });
+  };
+
+  const resetProduitForm = () => {
+    setShowProduitModal(false);
+    setSelectedProduit(null);
+    setPForm({
+      reference: "",
+      nom: "",
+      prix: "",
+      stock: "0",
+      seuilMin: "10",
+      unite: "unite",
+      fournisseurId: "",
+      logo: "",
+    });
+  };
+
+  // ==================== QUICK ACTIONS ====================
+  const handleCall = (phone: string) => {
+    Linking.openURL(`tel:${phone}`);
+  };
+
+  const handleEmail = (email: string) => {
+    Linking.openURL(`mailto:${email}`);
+  };
+
+  const handleWebsite = (url: string) => {
+    Linking.openURL(url);
+  };
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 1000);
+  };
+
+  // ==================== STOCK INDICATOR ====================
+  const StockIndicator = ({
+    stock,
+    seuilMin,
+  }: {
+    stock: number;
+    seuilMin: number;
+  }) => {
+    const niveau =
+      stock === 0 ? "rupture" : stock <= seuilMin ? "critique" : "normal";
+    const colors = {
+      rupture: "#EF4444",
+      critique: "#F59E0B",
+      normal: "#10B981",
+    };
+    const labels = { rupture: "Rupture", critique: "Alerte", normal: "OK" };
+
     return (
-      <View style={[styles.defaultLogo, { width: size, height: size }]}>
-        <Text style={{ fontSize: size * 0.6 }}>{defaultIcon}</Text>
+      <View style={[styles.stockBadge, { backgroundColor: colors[niveau] }]}>
+        <Text style={styles.stockText}>{labels[niveau]}</Text>
       </View>
     );
   };
 
-  // Filtrage des fournisseurs
-  const filteredFournisseurs = fournisseurs.filter(fournisseur => {
-    const matchSearch = fournisseur.nomEntreprise?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      fournisseur.email?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchCategorie = filterCategorie === 'all' || fournisseur.categorieId === filterCategorie;
-    return matchSearch && matchCategorie;
-  });
-
-  // Statistiques
-  const totalProduits = produits.length;
-  const fournisseursActifs = fournisseurs.filter(f => f.statut === 'actif').length;
-
-  // Composant FAB avec menu
-  const FloatingActionMenu = () => (
-    <View style={styles.fabContainer}>
-      {showActionMenu && (
-        <Animated.View style={[styles.fabMenu, { opacity: fadeAnim }]}>
-          <TouchableOpacity
-            style={[styles.fabMenuItem, { backgroundColor: '#10b981' }]}
-            onPress={() => {
-              setShowCategorieModal(true);
-              setShowActionMenu(false);
-            }}
-          >
-            <Icon name="pricetag" size={20} color="white" />
-            <Text style={styles.fabMenuText}>Catégorie</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={[styles.fabMenuItem, { backgroundColor: '#F59E0B' }]}
-            onPress={() => {
-              resetProduitForm();
-              setShowProduitModal(true);
-              setShowActionMenu(false);
-            }}
-          >
-            <Icon name="cube" size={20} color="white" />
-            <Text style={styles.fabMenuText}>Produit</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={[styles.fabMenuItem, { backgroundColor: '#3B82F6' }]}
-            onPress={() => {
-              resetFournisseurForm();
-              setShowFournisseurModal(true);
-              setShowActionMenu(false);
-            }}
-          >
-            <Icon name="business" size={20} color="white" />
-            <Text style={styles.fabMenuText}>Fournisseur</Text>
-          </TouchableOpacity>
-        </Animated.View>
-      )}
-      
-      <TouchableOpacity
-        style={styles.fabButton}
-        onPress={() => setShowActionMenu(!showActionMenu)}
-      >
-        <Icon 
-          name={showActionMenu ? "close" : "add"} 
-          size={24} 
-          color="white" 
-        />
-      </TouchableOpacity>
-    </View>
-  );
-
-  // Composants UI
-  const StatCard = ({ icon, label, value, colors }) => (
-    <Animated.View 
-      style={[
-        styles.statCard,
-        { 
-          opacity: fadeAnim,
-          transform: [{ translateY: slideAnim }]
-        }
-      ]}
-    >
-      <LinearGradient
-        colors={colors}
-        style={styles.statGradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      >
-        <View style={styles.statContent}>
-          <Text style={styles.statIcon}>{icon}</Text>
-          <Text style={styles.statLabel}>{label}</Text>
-          <Text style={styles.statValue}>{value}</Text>
-        </View>
-      </LinearGradient>
-    </Animated.View>
-  );
-
-  const FournisseurCard = ({ fournisseur }) => {
-    const categorie = getCategorieById(fournisseur.categorieId);
-    const produitsFournisseur = getProduitsByFournisseur(fournisseur.id);
-    const isExpanded = expandedFournisseurs[fournisseur.id];
+  // ==================== SUPPLIER CARD ====================
+  const SupplierCard = ({ item }: { item: Fournisseur }) => {
+    const isExpanded = expandedFournisseurs[item.id];
+    const cat = categories.find((c) => c.id === item.categorieId);
+    const supplierProducts = produits.filter(
+      (p) => p.fournisseurId === item.id
+    );
 
     return (
-      <Animated.View 
-        style={[
-          styles.fournisseurCard,
-          { 
-            opacity: fadeAnim,
-            transform: [{ translateY: slideAnim }]
-          }
-        ]}
-      >
-        <LinearGradient
-          colors={[categorie?.couleur || '#6B7280', darkenColor(categorie?.couleur || '#6B7280', 20)]}
-          style={styles.fournisseurHeader}
+      <View style={styles.card}>
+        {/* Header */}
+        <View
+          style={[
+            styles.cardHeader,
+            { borderLeftColor: cat?.couleur || "#CCC", borderLeftWidth: 5 },
+          ]}
         >
-          <View style={styles.fournisseurHeaderContent}>
-            <View style={styles.fournisseurInfo}>
-              <View style={styles.logoContainer}>
-                {renderLogo(fournisseur.logo, '🏢', 40)}
-              </View>
-              <View style={styles.fournisseurTextContainer}>
-                <Text style={styles.fournisseurNom}>{fournisseur.nomEntreprise}</Text>
-                <View style={styles.fournisseurTags}>
-                  <View style={[styles.tag, { backgroundColor: 'rgba(255,255,255,0.3)' }]}>
-                    <Text style={styles.tagText}>{categorie?.nom}</Text>
-                  </View>
-                  <View style={[styles.tag, { 
-                    backgroundColor: fournisseur.statut === 'actif' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)' 
-                  }]}>
-                    <Text style={styles.tagText}>
-                      {fournisseur.statut === 'actif' ? 'Actif' : 'Inactif'}
-                    </Text>
-                  </View>
-                </View>
-              </View>
+          <TouchableOpacity
+            style={{ flex: 1, flexDirection: "row", alignItems: "center" }}
+            onPress={() =>
+              setExpandedFournisseurs((p) => ({ ...p, [item.id]: !isExpanded }))
+            }
+          >
+            {item.logo && (
+              <Image source={{ uri: item.logo }} style={styles.logo} />
+            )}
+            <View style={{ flex: 1, marginLeft: item.logo ? 12 : 0 }}>
+              <Text style={styles.cardTitle}>{item.nomEntreprise}</Text>
+              <Text style={styles.cardSub}>
+                {cat?.icone} {cat?.nom || "Sans catégorie"} •{" "}
+                {supplierProducts.length} produits
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          <View style={styles.cardActions}>
+            <TouchableOpacity
+              onPress={() => {
+                setPForm({ ...pForm, fournisseurId: item.id });
+                setShowProduitModal(true);
+              }}
+              style={styles.miniBtn}
+            >
+              <Icon name="add" size={14} color="#3B82F6" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                setSelectedFournisseur(item);
+                setFForm(item);
+                setShowFournisseurModal(true);
+              }}
+              style={styles.miniBtn}
+            >
+              <Icon name="create" size={14} color="#64748B" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => deleteFournisseur(item)}
+              style={styles.miniBtn}
+            >
+              <Icon name="trash" size={14} color="#EF4444" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Expanded Details */}
+        {isExpanded && (
+          <View style={styles.cardDetail}>
+            {/* Quick Actions */}
+            <View style={styles.quickActions}>
+              {item.telephone && (
+                <TouchableOpacity
+                  onPress={() => handleCall(item.telephone!)}
+                  style={styles.quickBtn}
+                >
+                  <Icon name="call" size={16} color="#3B82F6" />
+                  <Text style={styles.quickText}>{item.telephone}</Text>
+                </TouchableOpacity>
+              )}
+              {item.email && (
+                <TouchableOpacity
+                  onPress={() => handleEmail(item.email!)}
+                  style={styles.quickBtn}
+                >
+                  <Icon name="mail" size={16} color="#3B82F6" />
+                  <Text style={styles.quickText}>{item.email}</Text>
+                </TouchableOpacity>
+              )}
+              {item.siteWeb && (
+                <TouchableOpacity
+                  onPress={() => handleWebsite(item.siteWeb!)}
+                  style={styles.quickBtn}
+                >
+                  <Icon name="globe" size={16} color="#3B82F6" />
+                  <Text style={styles.quickText}>Site web</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
-            <View style={styles.fournisseurActions}>
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => {
-                  resetProduitForm();
-                  setProduitForm(prev => ({ ...prev, fournisseurId: fournisseur.id }));
-                  setShowProduitModal(true);
-                }}
-              >
-                <Icon name="add-circle" size={20} color="white" />
-              </TouchableOpacity>
+            {item.adresse && (
+              <Text style={styles.infoText}>📍 {item.adresse}</Text>
+            )}
+            {item.description && (
+              <Text style={styles.descText}>{item.description}</Text>
+            )}
 
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => {
-                  setSelectedFournisseur(fournisseur);
-                  setFournisseurForm({
-                    nomEntreprise: fournisseur.nomEntreprise || '',
-                    logo: fournisseur.logo || '',
-                    telephone: fournisseur.telephone || '',
-                    email: fournisseur.email || '',
-                    siteWeb: fournisseur.siteWeb || '',
-                    adresse: fournisseur.adresse || '',
-                    categorieId: fournisseur.categorieId || '',
-                    description: fournisseur.description || '',
-                    statut: fournisseur.statut || 'actif'
-                  });
-                  setShowFournisseurModal(true);
-                }}
-              >
-                <Icon name="create" size={18} color="white" />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.actionButton, { backgroundColor: 'rgba(239,68,68,0.8)' }]}
-                onPress={() => handleDeleteFournisseur(fournisseur)}
-              >
-                <Icon name="trash" size={16} color="white" />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => toggleExpand(fournisseur.id)}
-              >
-                <Icon name={isExpanded ? "chevron-up" : "chevron-down"} size={18} color="white" />
-              </TouchableOpacity>
+            {/* Products List */}
+            <View style={styles.productList}>
+              <Text style={styles.sectionTitle}>
+                Produits ({supplierProducts.length})
+              </Text>
+              {supplierProducts.map((p) => (
+                <View key={p.id} style={styles.pItem}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.pName}>
+                      {p.nom}{" "}
+                      <Text style={{ fontWeight: "400", fontSize: 10 }}>
+                        ({p.reference})
+                      </Text>
+                    </Text>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 8,
+                        marginTop: 4,
+                      }}
+                    >
+                      <Text style={styles.pPrice}>{p.prix}€</Text>
+                      <Text style={styles.pStock}>Stock: {p.stock}</Text>
+                      <StockIndicator stock={p.stock} seuilMin={p.seuilMin} />
+                    </View>
+                  </View>
+                  <View style={{ flexDirection: "row", gap: 5 }}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setSelectedProduit(p);
+                        setPForm({
+                          ...p,
+                          prix: p.prix.toString(),
+                          stock: p.stock.toString(),
+                          seuilMin: p.seuilMin.toString(),
+                        });
+                        setShowProduitModal(true);
+                      }}
+                      style={[styles.miniBtn, { backgroundColor: "#3B82F6" }]
+                    
+                    }
+                    >
+                      <Icon name="create" size={12} color="white" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => deleteProduit(p)}
+                      style={[styles.miniBtn, { backgroundColor: "#EF4444" }]}
+                    >
+                      <Icon name="trash" size={12} color="white" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
             </View>
-          </View>
-
-          <View style={styles.contactInfo}>
-            {fournisseur.telephone && (
-              <View style={styles.contactItem}>
-                <Icon name="call" size={14} color="white" />
-                <Text style={styles.contactText}>{fournisseur.telephone}</Text>
-              </View>
-            )}
-            {fournisseur.email && (
-              <View style={styles.contactItem}>
-                <Icon name="mail" size={14} color="white" />
-                <Text style={styles.contactText}>{fournisseur.email}</Text>
-              </View>
-            )}
-          </View>
-
-          {fournisseur.description && (
-            <Text style={styles.fournisseurDescription}>{fournisseur.description}</Text>
-          )}
-
-          <View style={styles.fournisseurFooter}>
-            <Text style={styles.produitCount}>{produitsFournisseur.length} produit(s)</Text>
-          </View>
-        </LinearGradient>
-
-        {isExpanded && produitsFournisseur.length > 0 && (
-          <View style={styles.produitsContainer}>
-            {produitsFournisseur.map(produit => (
-              <View key={produit.id} style={styles.produitCard}>
-                <View style={styles.produitInfo}>
-                  <View style={styles.produitLogo}>
-                    {renderLogo(produit.logo, '📦', 32)}
-                  </View>
-                  <View style={styles.produitDetails}>
-                    <Text style={styles.produitNom}>
-                      {produit.reference} - {produit.nom}
-                    </Text>
-                    <Text style={styles.produitDetailsText}>
-                      {produit.unite} • {produit.prix}€ • Stock: {produit.stock}
-                    </Text>
-                    {produit.description && (
-                      <Text style={styles.produitDescription}>{produit.description}</Text>
-                    )}
-                  </View>
-                </View>
-
-                <View style={styles.produitActions}>
-                  <TouchableOpacity
-                    style={[styles.produitActionBtn, { backgroundColor: '#F59E0B' }]}
-                    onPress={() => {
-                      setSelectedProduit(produit);
-                      setProduitForm({
-                        reference: produit.reference || '',
-                        nom: produit.nom || '',
-                        unite: produit.unite || 'unite',
-                        prix: produit.prix?.toString() || '',
-                        logo: produit.logo || '',
-                        fournisseurId: produit.fournisseurId || '',
-                        categorieId: produit.categorieId || '',
-                        description: produit.description || '',
-                        stock: produit.stock || 0
-                      });
-                      setShowProduitModal(true);
-                    }}
-                  >
-                    <Icon name="create" size={14} color="white" />
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.produitActionBtn, { backgroundColor: '#EF4444' }]}
-                    onPress={() => handleDeleteProduit(produit)}
-                  >
-                    <Icon name="trash" size={14} color="white" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
           </View>
         )}
-      </Animated.View>
+      </View>
     );
   };
 
-  // Actions rapides
-  const QuickActions = () => (
-    <View style={styles.quickActions}>
-      <TouchableOpacity 
-        style={styles.quickAction} 
-        onPress={() => setAfficherRecherche(!afficherRecherche)}
-      >
-        <Icon 
-          name={afficherRecherche ? "eye-off" : "eye"} 
-          size={20} 
-          color="white" 
-        />
-        <Text style={styles.quickActionText}>
-          {afficherRecherche ? 'Masquer' : 'Afficher'}
-        </Text>
-      </TouchableOpacity>
-    </View>
-  );
+  // ==================== RENDER ====================
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#3B82F6" />
+        <Text style={styles.loadingText}>Chargement...</Text>
+      </View>
+    );
+  }
+
+  if (error) {
+
+    return (
+      <View style={styles.errorContainer}>
+        <Text style={styles.errorText}>{error}</Text>
+
+        <TouchableOpacity 
+          style={styles.retryBtn}
+          onPress={() => window.location.reload()}   >
+          <Text style={styles.retryText}>Réessayer</Text>
+
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
-      {/* Header avec dégradé */}
-      <LinearGradient
-        colors={['#1E40AF', '#3B82F6']}
-        style={styles.header}
-      > 
-        {/* Menu d'actions flottant */}
-        <FloatingActionMenu />
+      {/* HEADER */}
+      <View style={styles.header}>
+       
 
-        <View style={styles.headerContent}>
-          <View style={styles.headerTop}>
-            <View style={styles.headerTextContainer}>
-              <Text style={styles.title}>Gestion des Fournisseurs</Text>
-              <Text style={styles.subtitle}>Gérez vos fournisseurs et leurs produits</Text>
-            </View>
-            
-            {/* Actions rapides */}
-            <QuickActions />
-          </View>
-          
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statsContainer}>
-            <StatCard 
-              icon="🏢" 
-              label="Fournisseurs" 
-              value={fournisseurs.length}
-              colors={['#8B5CF6', '#7C3AED']}
-            />
-            <StatCard 
-              icon="📦" 
-              label="Produits" 
-              value={totalProduits}
-              colors={['#10B981', '#059669']}
-            />
-            <StatCard 
-              icon="✅" 
-              label="Actifs" 
-              value={fournisseursActifs}
-              colors={['#F59E0B', '#D97706']}
-            />
-            <StatCard 
-              icon="📊" 
-              label="Catégories" 
-              value={categories.length}
-              colors={['#EC4899', '#DB2777']}
-            />
-          </ScrollView>
-        </View>
-      </LinearGradient>
-
-
-
-      {/* Barre de recherche et filtres */}
-      {afficherRecherche && (
-        <View style={styles.filtersSection}>
-          <View style={styles.searchBox}>
-            <Icon name="search" size={20} color="#6B7280" />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Rechercher un fournisseur..."
-              value={searchTerm}
-              onChangeText={setSearchTerm}
-              placeholderTextColor="#9CA3AF"
-            />
-            {searchTerm.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchTerm('')}>
-                <Icon name="close-circle" size={20} color="#6B7280" />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesFilter}>
+        <ScreenHeader
+          title="Fournisseurs"
+          subtitle="Gestion des Fournisseurs"
+          backgroundColor="#3B82F6"
+          onBackPress={() => navigation.goBack()}
+          rightButtons={[
+            { label: "+ Nouvelle", onPress: () => setShowActionMenu(true) },
+          ]}
+        />
+        {/* Stats Warning */}
+        {stats.produitsAlerte > 0 && (
+          <View style={styles.alertBanner}>
+            <Icon name="alert" size={16} color="#EF4444" />
+            <Text style={styles.alertText}>
+              {stats.produitsAlerte} produit(s) en alerte de stock
+            </Text>
             <TouchableOpacity
-              style={[styles.filterChip, filterCategorie === 'all' && styles.filterChipActive]}
-              onPress={() => setFilterCategorie('all')}
+              style={styles.alertBtn}
+              onPress={() => {
+                const alertProducts = produits.filter(
+                  (p) => p.stock <= p.seuilMin
+                );
+                Alert.alert(
+                  "Produits en alerte",
+                  alertProducts
+                    .map((p) => `• ${p.nom}: ${p.stock}/${p.seuilMin}`)
+                    .join("\n"),
+                  [{ text: "OK" }]
+                );
+              }}
             >
-              <Text style={[styles.filterChipText, filterCategorie === 'all' && styles.filterChipTextActive]}>
-                Tous
-              </Text>
+              <Text style={styles.alertBtnText}>Voir</Text>
             </TouchableOpacity>
-            
-            {categories.map(categorie => (
+          </View>
+        )}
+
+        {/* Search Bar */}
+        <View style={styles.searchBar}>
+          <Icon name="search" size={16} color="#94A3B8" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Rechercher un fournisseur..."
+            value={searchTerm}
+            onChangeText={setSearchTerm}
+            placeholderTextColor="#94A3B8"
+          />
+          {searchTerm.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchTerm("")}>
+              <Icon name="close" size={16} color="#94A3B8" />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Categories Filter */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.categoriesScroll}
+        >
+          <TouchableOpacity
+            onPress={() => setFilterCategorie("all")}
+            style={[
+              styles.chip,
+              filterCategorie === "all" && styles.chipActive,
+            ]}
+          >
+            <Text
+              style={[
+                styles.chipText,
+                filterCategorie === "all" && styles.chipTextActive,
+              ]}
+            >
+              Tous ({fournisseurs.length})
+            </Text>
+          </TouchableOpacity>
+
+          {categories.map((c) => {
+            const count = fournisseurs.filter(
+              (f) => f.categorieId === c.id
+            ).length;
+            if (count === 0) return null;
+
+            return (
               <TouchableOpacity
-                key={categorie.id}
+                key={c.id}
+                onPress={() => setFilterCategorie(c.id)}
                 style={[
-                  styles.filterChip,
-                  { borderColor: categorie.couleur },
-                  filterCategorie === categorie.id && { backgroundColor: categorie.couleur }
+                  styles.chip,
+                  filterCategorie === c.id && { backgroundColor: c.couleur },
                 ]}
-                onPress={() => setFilterCategorie(categorie.id)}
               >
-                <Text style={[
-                  styles.filterChipText,
-                  filterCategorie === categorie.id && styles.filterChipTextActive
-                ]}>
-                  {categorie.icone} {categorie.nom}
+                <Text
+                  style={[
+                    styles.chipText,
+                    filterCategorie === c.id && styles.chipTextActive,
+                  ]}
+                >
+                  {c.icone} {c.nom} ({count})
                 </Text>
               </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      )}
+            );
+          })}
+        </ScrollView>
+      </View>
 
-      {/* Liste des fournisseurs */}
-      <ScrollView
-        style={styles.fournisseursList}
+      {/* MAIN CONTENT */}
+      <FlatList
+        data={filteredData}
+        renderItem={({ item }) => <SupplierCard item={item} />}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={{ padding: 15, paddingBottom: 80 }}
         refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
-            onRefresh={onRefresh}
-            colors={['#3B82F6']}
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={["#3B82F6"]}
             tintColor="#3B82F6"
           />
         }
-        showsVerticalScrollIndicator={false}
-      >
-        {filteredFournisseurs.length === 0 ? (
+        ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Icon name="business-outline" size={64} color="#9CA3AF" />
-            <Text style={styles.emptyStateTitle}>Aucun fournisseur trouvé</Text>
-            <Text style={styles.emptyStateText}>
-              {searchTerm || filterCategorie !== 'all' 
-                ? 'Aucun fournisseur ne correspond à votre recherche'
-                : 'Commencez par créer votre premier fournisseur'
-              }
+            <Icon name="business" size={64} color="#CBD5E1" />
+            <Text style={styles.emptyTitle}>
+              {searchTerm || filterCategorie !== "all"
+                ? "Aucun résultat"
+                : "Aucun fournisseur"}
+            </Text>
+            <Text style={styles.emptyText}>
+              {searchTerm || filterCategorie !== "all"
+                ? "Aucun fournisseur ne correspond à votre recherche"
+                : "Commencez par créer votre premier fournisseur"}
             </Text>
             <TouchableOpacity
-              style={styles.emptyStateButton}
+              style={styles.emptyBtn}
               onPress={() => {
-                resetFournisseurForm();
+                setShowActionMenu(false);
                 setShowFournisseurModal(true);
               }}
             >
-              <Text style={styles.emptyStateButtonText}>Créer un fournisseur</Text>
+              <Text style={styles.emptyBtnText}>
+                {searchTerm || filterCategorie !== "all"
+                  ? "Effacer les filtres"
+                  : "Créer un fournisseur"}
+              </Text>
             </TouchableOpacity>
           </View>
-        ) : (
-          filteredFournisseurs.map(fournisseur => (
-            <FournisseurCard key={fournisseur.id} fournisseur={fournisseur} />
-          ))
-        )}
-        
-        {/* Espace pour le FAB */}
-        <View style={styles.fabSpacer} />
-      </ScrollView>
+        }
+      />
 
-      {/* Modal Fournisseur */}
-      <Modal
-        visible={showFournisseurModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => {
-          setShowFournisseurModal(false);
-          resetFournisseurForm();
-        }}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+      {/* ACTION MENU MODAL */}
+      <Modal visible={showActionMenu} transparent animationType="slide">
+        <TouchableOpacity
+          style={styles.overlay}
+          onPress={() => setShowActionMenu(false)}
+          activeOpacity={1}
+        >
+          <View style={styles.sheet}>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>Ajouter Nouveau</Text>
+              <TouchableOpacity onPress={() => setShowActionMenu(false)}>
+                <Icon name="close" size={24} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.rowAround}>
+              <TouchableOpacity
+                style={styles.sheetBtn}
+                onPress={() => {
+                  setSelectedFournisseur(null);
+                  setFForm({
+                    nomEntreprise: "",
+                    telephone: "",
+                    email: "",
+                    adresse: "",
+                    siteWeb: "",
+                    description: "",
+                    categorieId: "",
+                    logo: "",
+                  });
+                  setShowFournisseurModal(true);
+                  setShowActionMenu(false);
+                }}
+              >
+                <View
+                  style={[styles.sheetEmoji, { backgroundColor: "#3B82F6" }]}
+                >
+                  <Text style={{ fontSize: 30 }}>🏢</Text>
+                </View>
+                <Text style={styles.sheetBtnText}>Fournisseur</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.sheetBtn}
+                onPress={() => {
+                  setSelectedProduit(null);
+                  setPForm({
+                    reference: "",
+                    nom: "",
+                    prix: "",
+                    stock: "0",
+                    seuilMin: "10",
+                    unite: "unite",
+                    fournisseurId: "",
+                    logo: "",
+                  });
+                  setShowProduitModal(true);
+                  setShowActionMenu(false);
+                }}
+              >
+                <View
+                  style={[styles.sheetEmoji, { backgroundColor: "#10B981" }]}
+                >
+                  <Text style={{ fontSize: 30 }}>📦</Text>
+                </View>
+                <Text style={styles.sheetBtnText}>Produit</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.sheetBtn}
+                onPress={() => {
+                  setShowCategorieModal(true);
+                  setShowActionMenu(false);
+                }}
+              >
+                <View
+                  style={[styles.sheetEmoji, { backgroundColor: "#8B5CF6" }]}
+                >
+                  <Text style={{ fontSize: 30 }}>🏷️</Text>
+                </View>
+                <Text style={styles.sheetBtnText}>Catégorie</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* FOURNISSEUR MODAL */}
+      <Modal visible={showFournisseurModal} animationType="slide">
+        <View style={styles.modalView}>
+          <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>
-              {selectedFournisseur ? 'Modifier le fournisseur' : 'Nouveau fournisseur'}
+              {selectedFournisseur ? "Modifier" : "Nouveau"} Fournisseur
             </Text>
+            <TouchableOpacity onPress={resetFournisseurForm}>
+              <Icon name="close" size={24} />
+            </TouchableOpacity>
+          </View>
 
-            <ScrollView style={styles.formContainer}>
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Nom de l'entreprise *</Text>
+          <ScrollView
+            style={{ padding: 20 }}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Logo Upload */}
+            <View style={styles.logoUploadSection}>
+              <Text style={styles.label}>Logo</Text>
+              <TouchableOpacity
+                style={styles.uploadBtn}
+                onPress={() => pickAndUploadImage(true)}
+                disabled={uploadingImage}
+              >
+                {uploadingImage ? (
+                  <ActivityIndicator size="small" color="#3B82F6" />
+                ) : fForm.logo ? (
+                  <Image
+                    source={{ uri: fForm.logo }}
+                    style={styles.logoPreview}
+                  />
+                ) : (
+                  <>
+                    <Icon name="upload" size={24} color="#3B82F6" />
+                    <Text style={styles.uploadText}>Choisir une image</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+              {fForm.logo && !uploadingImage && (
+                <TouchableOpacity
+                  style={styles.removeLogoBtn}
+                  onPress={() => setFForm({ ...fForm, logo: "" })}
+                >
+                  <Text style={styles.removeLogoText}>Supprimer</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <Text style={styles.label}>Nom de l'entreprise *</Text>
+            <TextInput
+              style={styles.input}
+              value={fForm.nomEntreprise}
+              onChangeText={(t) => setFForm({ ...fForm, nomEntreprise: t })}
+              placeholder="Ex: SARL Dubois & Fils"
+            />
+
+            <View style={styles.rowBetween}>
+              <View style={{ width: "48%" }}>
+                <Text style={styles.label}>Téléphone</Text>
                 <TextInput
                   style={styles.input}
-                  value={fournisseurForm.nomEntreprise}
-                  onChangeText={(text) => setFournisseurForm(prev => ({ ...prev, nomEntreprise: text }))}
-                  placeholder="Ex: SARL Dubois & Fils"
+                  keyboardType="phone-pad"
+                  value={fForm.telephone}
+                  onChangeText={(t) => setFForm({ ...fForm, telephone: t })}
+                  placeholder="01 23 45 67 89"
                 />
               </View>
+              <View style={{ width: "48%" }}>
+                <Text style={styles.label}>Email</Text>
+                <TextInput
+                  style={styles.input}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  value={fForm.email}
+                  onChangeText={(t) => setFForm({ ...fForm, email: t })}
+                  placeholder="contact@entreprise.com"
+                />
+              </View>
+            </View>
 
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Logo</Text>
-                <View style={styles.imageUploadContainer}>
-                  <TouchableOpacity
-                    style={[styles.uploadButton, uploadingLogo && styles.uploadButtonDisabled]}
-                    onPress={() => pickImage(true)}
-                    disabled={uploadingLogo}
+            <Text style={styles.label}>Site Web</Text>
+            <TextInput
+              style={styles.input}
+              autoCapitalize="none"
+              value={fForm.siteWeb}
+              onChangeText={(t) => setFForm({ ...fForm, siteWeb: t })}
+              placeholder="https://www.entreprise.com"
+            />
+
+            <Text style={styles.label}>Adresse</Text>
+            <TextInput
+              style={styles.input}
+              value={fForm.adresse}
+              onChangeText={(t) => setFForm({ ...fForm, adresse: t })}
+              placeholder="123 Rue Principale, 75000 Paris"
+            />
+
+            <Text style={styles.label}>Catégorie *</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.categoriesGrid}
+            >
+              {categories.map((c) => (
+                <TouchableOpacity
+                  key={c.id}
+                  onPress={() => setFForm({ ...fForm, categorieId: c.id })}
+                  style={[
+                    styles.categoryOption,
+                    { borderColor: c.couleur },
+                    fForm.categorieId === c.id && {
+                      backgroundColor: c.couleur,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.categoryText,
+                      fForm.categorieId === c.id && styles.categoryTextActive,
+                    ]}
                   >
-                    <Text style={styles.uploadButtonText}>
-                      {uploadingLogo ? '📤 Upload...' : '📷 Choisir une image'}
-                    </Text>
-                  </TouchableOpacity>
-                  
-                  {fournisseurForm.logo && (
-                    <TouchableOpacity
-                      style={styles.removeButton}
-                      onPress={handleRemoveLogoFournisseur}
-                    >
-                      <Text style={styles.removeButtonText}>🗑️ Supprimer</Text>
-                    </TouchableOpacity>
-                  )}
+                    {c.icone} {c.nom}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity
+                style={[styles.categoryOption, styles.addCategoryBtn]}
+                onPress={() => {
+                  setShowFournisseurModal(false);
+                  setShowCategorieModal(true);
+                }}
+              >
+                <Text style={styles.addCategoryText}>+ Ajouter</Text>
+              </TouchableOpacity>
+            </ScrollView>
+
+            <Text style={styles.label}>Description / Notes</Text>
+            <TextInput
+              style={[styles.input, { height: 100 }]}
+              multiline
+              value={fForm.description}
+              onChangeText={(t) => setFForm({ ...fForm, description: t })}
+              placeholder="Informations supplémentaires..."
+            />
+            {/* ---------------------------- */}
+            {/* --- SECTION REPRÉSENTANT --- */}
+            <View
+              style={{
+                marginTop: 20,
+                padding: 15,
+                backgroundColor: "#F1F5F9",
+                borderRadius: 12,
+              }}
+            >
+              <Text style={[styles.label, { marginTop: 0, color: "#3B82F6" }]}>
+                👤 Info Représentant
+              </Text>
+
+              <Text style={styles.label}>Nom du représentant</Text>
+              <TextInput
+                style={styles.input}
+                value={fForm.nomRepresentant}
+                onChangeText={(t) => setFForm({ ...fForm, nomRepresentant: t })}
+                placeholder="Nom complet"
+              />
+
+              <View style={styles.rowBetween}>
+                <View style={{ width: "48%" }}>
+                  <Text style={styles.label}>Tél. Direct</Text>
+                  <TextInput
+                    style={styles.input}
+                    keyboardType="phone-pad"
+                    value={fForm.telRepresentant}
+                    onChangeText={(t) =>
+                      setFForm({ ...fForm, telRepresentant: t })
+                    }
+                    placeholder="06..."
+                  />
                 </View>
-                
-                {fournisseurForm.logo && (
-                  <View style={styles.imagePreview}>
-                    <Text style={styles.imagePreviewText}>Aperçu :</Text>
-                    {renderLogo(fournisseurForm.logo, '🏢', 80)}
+                <View style={{ width: "48%" }}>
+                  <Text style={styles.label}>Email Direct</Text>
+                  <TextInput
+                    style={styles.input}
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                    value={fForm.emailRepresentant}
+                    onChangeText={(t) =>
+                      setFForm({ ...fForm, emailRepresentant: t })
+                    }
+                    placeholder="nom@pro.com"
+                  />
+                </View>
+              </View>
+            </View>
+            {/* ---------------------------- */}
+            <TouchableOpacity style={styles.btnSave} onPress={saveFournisseur}>
+              <Text style={styles.btnSaveText}>
+                {selectedFournisseur
+                  ? "Mettre à jour"
+                  : "Enregistrer le fournisseur"}
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* PRODUIT MODAL */}
+      <Modal visible={showProduitModal} animationType="slide">
+        <View style={styles.modalView}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>
+              {selectedProduit ? "Modifier" : "Nouveau"} Produit
+            </Text>
+            <TouchableOpacity onPress={resetProduitForm}>
+              <Icon name="close" size={24} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            style={{ padding: 20 }}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Logo Upload */}
+            <View style={styles.logoUploadSection}>
+              <Text style={styles.label}>Image du produit</Text>
+              <TouchableOpacity
+                style={styles.uploadBtn}
+                onPress={() => pickAndUploadImage(false)}
+                disabled={uploadingImage}
+              >
+                {uploadingImage ? (
+                  <ActivityIndicator size="small" color="#3B82F6" />
+                ) : pForm.logo ? (
+                  <Image
+                    source={{ uri: pForm.logo }}
+                    style={styles.logoPreview}
+                  />
+                ) : (
+                  <>
+                    <Icon name="upload" size={24} color="#3B82F6" />
+                    <Text style={styles.uploadText}>Choisir une image</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+              {pForm.logo && !uploadingImage && (
+                <TouchableOpacity
+                  style={styles.removeLogoBtn}
+                  onPress={() => setPForm({ ...pForm, logo: "" })}
+                >
+                  <Text style={styles.removeLogoText}>Supprimer</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <Text style={styles.label}>Référence produit</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="ex: SKU-100"
+              value={pForm.reference}
+              onChangeText={(t) => setPForm({ ...pForm, reference: t })}
+            />
+
+            <Text style={styles.label}>Nom du produit *</Text>
+            <TextInput
+              style={styles.input}
+              value={pForm.nom}
+              onChangeText={(t) => setPForm({ ...pForm, nom: t })}
+              placeholder="Ex: Savon liquide 500ml"
+            />
+
+            <View style={styles.rowBetween}>
+              <View style={{ width: "48%" }}>
+                <Text style={styles.label}>Prix d'achat (€)</Text>
+                <TextInput
+                  style={styles.input}
+                  keyboardType="decimal-pad"
+                  value={pForm.prix}
+                  onChangeText={(t) => setPForm({ ...pForm, prix: t })}
+                  placeholder="0.00"
+                />
+              </View>
+              <View style={{ width: "48%" }}>
+                <Text style={styles.label}>Unité</Text>
+
+                {/* Bouton qui simule l'input pour ouvrir la liste */}
+                <TouchableOpacity
+                  style={styles.dropdownButton}
+                  onPress={() => setShowUnitePicker(!showUnitePicker)}
+                >
+                  <Text style={styles.dropdownButtonText}>
+                    {pForm.unite || "Sélectionner"}
+                  </Text>
+                  <Icon
+                    name={showUnitePicker ? "chevron-up" : "chevron-down"}
+                    size={14}
+                    color="#64748B"
+                  />
+                </TouchableOpacity>
+
+                {/* Liste déroulante conditionnelle */}
+                {showUnitePicker && (
+                  <View style={styles.dropdownContainer}>
+                    {unites.map((u) => (
+                      <TouchableOpacity
+                        key={u}
+                        style={[
+                          styles.dropdownItem,
+                          pForm.unite === u && styles.dropdownItemActive,
+                        ]}
+                        onPress={() => {
+                          setPForm({ ...pForm, unite: u });
+                          setShowUnitePicker(false);
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.dropdownItemText,
+                            pForm.unite === u && styles.dropdownItemTextActive,
+                          ]}
+                        >
+                          {u}
+                        </Text>
+                        {pForm.unite === u && (
+                          <Icon name="checkmark" size={14} color="#3B82F6" />
+                        )}
+                      </TouchableOpacity>
+                    ))}
                   </View>
                 )}
               </View>
+            </View>
 
-              <View style={styles.formRow}>
-                <View style={[styles.formGroup, styles.formGroupHalf]}>
-                  <Text style={styles.label}>Téléphone</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={fournisseurForm.telephone}
-                    onChangeText={(text) => setFournisseurForm(prev => ({ ...prev, telephone: text }))}
-                    placeholder="Ex: 01 23 45 67 89"
-                    keyboardType="phone-pad"
-                  />
-                </View>
-
-
-
-                <View style={[styles.formGroup, styles.formGroupHalf]}>
-                  <Text style={styles.label}>Email</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={fournisseurForm.email}
-                    onChangeText={(text) => setFournisseurForm(prev => ({ ...prev, email: text }))}
-                    placeholder="Ex: contact@entreprise.com"
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                  />
-                </View>
-              </View>
-
-
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Catégorie *</Text>
-                <ScrollView style={styles.categoriesGrid} nestedScrollEnabled={true}>
-                  {categories.map(categorie => (
-                    <TouchableOpacity
-                      key={categorie.id}
-                      style={[
-                        styles.categorieCard,
-                        { borderColor: categorie.couleur },
-                        fournisseurForm.categorieId === categorie.id && { backgroundColor: categorie.couleur + '20' }
-                      ]}
-                      onPress={() => setFournisseurForm(prev => ({ ...prev, categorieId: categorie.id }))} >
-
-                      <Text style={styles.categorieIcon}>{categorie.icone}</Text>
-                      <Text style={styles.categorieName}>{categorie.nom}</Text>
-                      <Text style={styles.categorieExemples}>{categorie.exemples}</Text>
-                      {fournisseurForm.categorieId === categorie.id && (
-                        <Text style={[styles.checkmark, { color: categorie.couleur }]}>✓</Text>
-
-                     
-                     
-                     
-                        )}
-
-
-                    </TouchableOpacity>
-
-
-                  ))}
-
-                </ScrollView>
-              </View>
-
-
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Description</Text>
-
+            <View style={styles.rowBetween}>
+              <View style={{ width: "48%" }}>
+                <Text style={styles.label}>Stock actuel</Text>
                 <TextInput
-                  style={[styles.input, styles.textArea]}
-                  value={fournisseurForm.description}
-                  onChangeText={(text) => setFournisseurForm(prev => ({ ...prev, description: text }))}
-                  placeholder="Description du fournisseur..."
-                  multiline
-                  numberOfLines={3}
+                  style={styles.input}
+                  keyboardType="numeric"
+                  value={pForm.stock}
+                  onChangeText={(t) => setPForm({ ...pForm, stock: t })}
+                  placeholder="0"
                 />
               </View>
+              <View style={{ width: "48%" }}>
+                <Text style={styles.label}>Seuil d'alerte</Text>
+                <TextInput
+                  style={styles.input}
+                  keyboardType="numeric"
+                  value={pForm.seuilMin}
+                  onChangeText={(t) => setPForm({ ...pForm, seuilMin: t })}
+                  placeholder="10"
+                />
+                <Text style={styles.helperText}>
+                  Alerte quand stock ≤ seuil
+                </Text>
+              </View>
+            </View>
+
+            <Text style={styles.label}>Fournisseur associé *</Text>
+            {pForm.fournisseurId ? (
+              <View style={styles.selectedSupplier}>
+                <Text style={styles.selectedSupplierText}>
+                  {
+                    fournisseurs.find((f) => f.id === pForm.fournisseurId)
+                      ?.nomEntreprise
+                  }
+                </Text>
+              </View>
+            ) : (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.suppliersGrid}
+              >
+                {fournisseurs.slice(0, 5).map((f) => (
+                  <TouchableOpacity
+                    key={f.id}
+                    style={styles.supplierOption}
+                    onPress={() => setPForm({ ...pForm, fournisseurId: f.id })}
+                  >
+                    <Text style={styles.supplierOptionText}>
+                      {f.nomEntreprise}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+
+            <TouchableOpacity style={styles.btnSave} onPress={saveProduit}>
+              <Text style={styles.btnSaveText}>
+                {selectedProduit ? "Mettre à jour" : "Ajouter au stock"}
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* CATEGORIE MODAL */}
+      <Modal visible={showCategorieModal} animationType="fade" transparent>
+        <View style={styles.overlayCenter}>
+          <View style={styles.dialog}>
+            <View style={styles.dialogHeader}>
+              <Text style={styles.dialogTitle}>Nouvelle Catégorie</Text>
+              <TouchableOpacity onPress={() => setShowCategorieModal(false)}>
+                <Icon name="close" size={20} />
+              </TouchableOpacity>
+            </View>
+
+            <TextInput
+              style={[styles.input, { marginTop: 15 }]}
+              placeholder="Nom (ex: Boissons)"
+              value={cForm.nom}
+              onChangeText={(t) => setCForm({ ...cForm, nom: t })}
+            />
+
+            <Text style={[styles.label, { marginTop: 20 }]}>Couleur</Text>
+            <View style={styles.rowAround}>
+              {[
+                "#3B82F6",
+                "#10B981",
+                "#F59E0B",
+                "#EF4444",
+                "#8B5CF6",
+                "#EC4899",
+              ].map((color) => (
+                <TouchableOpacity
+                  key={color}
+                  onPress={() => setCForm({ ...cForm, couleur: color })}
+                  style={[
+                    styles.colorCircle,
+                    { backgroundColor: color },
+                    cForm.couleur === color && styles.colorActive,
+                  ]}
+                />
+              ))}
+            </View>
+
+            <Text style={[styles.label, { marginTop: 20 }]}>Icône</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.iconsScroll}
+            >
+              {["🏢", "📦", "🍽️", "🧹", "🔧", "👕", "💊", "💡", "🚚", "🏷️"].map(
+                (icon) => (
+                  <TouchableOpacity
+                    key={icon}
+                    style={[
+                      styles.iconOption,
+                      cForm.icone === icon && styles.iconOptionActive,
+                    ]}
+                    onPress={() => setCForm({ ...cForm, icone: icon })}
+                  >
+                    <Text style={{ fontSize: 24 }}>{icon}</Text>
+                  </TouchableOpacity>
+                )
+              )}
             </ScrollView>
 
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
-                onPress={() => {
-                  setShowFournisseurModal(false);
-                  resetFournisseurForm();
-                }}
-                disabled={isSubmitting}
-              >
+            <TouchableOpacity style={styles.btnSave} onPress={saveCategorie}>
+              <Text style={styles.btnSaveText}>Créer la catégorie</Text>
+            </TouchableOpacity>
 
-              <Text style={styles.cancelButtonText}>Annuler</Text>
-              </TouchableOpacity>
-              
-
-              <TouchableOpacity
-                style={[styles.modalButton, styles.submitButton]}
-                onPress={handleSubmitFournisseur}
-                disabled={isSubmitting}
-              >
-                <Text style={styles.submitButtonText}>
-                  {isSubmitting ? '...' : (selectedFournisseur ? 'Modifier' : 'Créer')}
-                </Text>
-              </TouchableOpacity>
-
-
-              
-            </View>
+            <TouchableOpacity
+              style={styles.btnCancel}
+              onPress={() => setShowCategorieModal(false)}
+            >
+              <Text style={styles.btnCancelText}>Annuler</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
+
       
-
-
-      {/* Modal Produit */}
-      <Modal
-        visible={showProduitModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => {
-          setShowProduitModal(false);
-          resetProduitForm();
-        }} >
-
-
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>
-              {selectedProduit ? 'Modifier le prod' : 'Nouveau produit'}
-            </Text>
-
-            <ScrollView style={styles.formContainer}>
-              <View style={styles.formRow}>
-                <View style={[styles.formGroup, styles.formGroupHalf]}>
-                  <Text style={styles.label}>Référence *</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={produitForm.reference}
-                    onChangeText={(text) => setProduitForm(prev => ({ ...prev, reference: text }))}
-                    placeholder="Ex: PROD-001"
-                  />
-                </View>
-
-                <View style={[styles.formGroup, styles.formGroupHalf]}>
-                  <Text style={styles.label}>Unité</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.unitesContainer}>
-                    {typesUnite.map(unite => (
-                      <TouchableOpacity
-                        key={unite.value}
-                        style={[
-                          styles.uniteChip,
-                          produitForm.unite === unite.value && styles.uniteChipActive
-                        ]}
-
-                        onPress={() => setProduitForm(prev => ({ ...prev, unite: unite.value }))} >
-
-                        <Text style={[
-                          styles.uniteChipText,
-                          produitForm.unite === unite.value && styles.uniteChipTextActive
-                        ]}>
-                          {unite.label}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-
-              </View>
-
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Nom du produit</Text>
-                <TextInput
-                  style={styles.input}
-                  value={produitForm.nom}
-                  onChangeText={(text) => setProduitForm(prev => ({ ...prev, nom: text }))}
-                  placeholder="Ex: Savon liquide"
-                />
-              </View>
-
-
-              <View style={styles.formRow}>
-                <View style={[styles.formGroup, styles.formGroupHalf]}>
-                  <Text style={styles.label}>Prix (€)</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={produitForm.prix}
-                    onChangeText={(text) => setProduitForm(prev => ({ ...prev, prix: text }))}
-                    placeholder="Ex: 12.50"
-                    keyboardType="decimal-pad"
-                  />
-                </View>
-
-
-                <View style={[styles.formGroup, styles.formGroupHalf]}>
-                  <Text style={styles.label}>Stock</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={produitForm.stock.toString()}
-                    onChangeText={(text) => setProduitForm(prev => ({ ...prev, stock: parseInt(text) || 0 }))}
-                    placeholder="Ex: 100"
-                    keyboardType="numeric"
-                  />
-                </View>
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Fournisseur *</Text>
-                <ScrollView style={styles.fournisseursGrid} nestedScrollEnabled={true}>
-
-                  {fournisseurs.map(fournisseur => (
-                    <TouchableOpacity
-                      key={fournisseur.id}
-                      style={[
-                        styles.fournisseurOption,
-                        produitForm.fournisseurId === fournisseur.id && styles.fournisseurOptionActive
-                      ]}
-                      onPress={() => setProduitForm(prev => ({ ...prev, fournisseurId: fournisseur.id }))}
-                    >
-                      {renderLogo(fournisseur.logo, '🏢', 24)}
-                      <Text style={styles.fournisseurOptionText}>{fournisseur.nomEntreprise}</Text>
-                      {produitForm.fournisseurId === fournisseur.id && (
-                        <Text style={styles.checkmark}>✓</Text>
-
-                      )}
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-
-              
-
-          <View style={styles.formGroup}>
-                <Text style={styles.label}>Description</Text>
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  value={produitForm.description}
-                  onChangeText={(text) => setProduitForm(prev => ({ ...prev, description: text }))}
-                  placeholder="Description du produit..."
-                  multiline
-                  numberOfLines={3}
-                />
-
-              </View>
-            </ScrollView>
-
-            <View style={styles.modalActions}>
-
-
-
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
-                onPress={() => {
-                  setShowProduitModal(false);
-                  resetProduitForm();
-                }}
-                disabled={isSubmitting}
-              >
-                <Text style={styles.cancelButtonText}>Annuler</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.modalButton, styles.submitButton]}
-                onPress={handleSubmitProduit}
-                disabled={isSubmitting}
-              
-              >
-
-                <Text style={styles.submitButtonText}>
-                  {isSubmitting ? '...' : (selectedProduit ? 'Modifier' : 'Créer')}
-
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Modal Catégorie */}
-
-      <Modal
-        visible={showCategorieModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => {
-          setShowCategorieModal(false);
-          resetCategorieForm();
-        
-        }}
-
-      >
-        <View style={styles.modalOverlay}>
-
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Nouvelle catégorie</Text>
-
-            <ScrollView style={styles.formContainer}>
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Nom de la catégorie *</Text>
-                <TextInput
-                  style={styles.input}
-                  value={categorieForm.nom}
-                  onChangeText={(text) => setCategorieForm(prev => ({ ...prev, nom: text }))}
-                  placeholder="Ex: Équipement sportif"
-                />
-              </View>
-
-              <View style={styles.formGroup}>
-
-                <Text style={styles.label}>Couleur</Text>
-                <View style={styles.colorsContainer}>
-                  {['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#6366F1', '#14B8A6'].map(color => (
-                    <TouchableOpacity
-                      key={color}
-                      style={[
-                        styles.colorOption,
-                        { backgroundColor: color },
-                        categorieForm.couleur === color && styles.colorOptionActive
-                      ]}
-                      onPress={() => setCategorieForm(prev => ({ ...prev, couleur: color }))}
-                    >
-                      {categorieForm.couleur === color && (
-                        <Text style={styles.colorCheckmark}>✓</Text>
-                      )}
-                    </TouchableOpacity>
-
-                            
-                  ))}
-                </View> 
-
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Icône</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.iconsContainer}>
-                  {iconesDisponibles.map(icone => (
-                    <TouchableOpacity
-                      key={icone.value}
-                      style={[
-                        styles.iconOption,
-                        categorieForm.icone === icone.value && styles.iconOptionActive
-                      ]}
-                      onPress={() => setCategorieForm(prev => ({ ...prev, icone: icone.value }))}
-                    >
-                      <Text style={styles.iconText}>{icone.value}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-            </ScrollView>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
-                onPress={() => {
-                  setShowCategorieModal(false);
-                  resetCategorieForm();
-                }}
-                disabled={isSubmitting}
-              >
-                <Text style={styles.cancelButtonText}>Annuler</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.modalButton, styles.submitButton]}
-                onPress={handleSubmitCategorie}
-                disabled={isSubmitting}
-              >
-                <Text style={styles.submitButtonText}>
-                  {isSubmitting ? '...' : 'Créer la catégorie'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 };
 
-
-// Les styles restent exactement les mêmes que dans le code précédent
+// ==================== STYLES ====================
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
-  },
-  header: {
-    padding: 24,
-    paddingTop: Platform.OS === 'ios' ? 60 : 40,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 8,
-  }    
-  ,
-  
-  headerContent: {
-    marginTop: 10,
+    backgroundColor: "#F8FAFC",
   },
 
-  headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+  // Loading & Error
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
+  loadingText: { marginTop: 16, color: "#64748B" },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  errorText: {
+    color: "#EF4444",
+    fontSize: 16,
+    textAlign: "center",
     marginBottom: 20,
   },
-  headerTextContainer: {
-    flex: 1,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: 'white',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: 'rgba(255,255,255,0.9)',
-    marginBottom: 24,
-  },
-
-  statsContainer: {
-    flexDirection: 'row',
-  },
-
-
-  statCard: {
-    marginRight: 16,
-    borderRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 12,
-
-  },
-  statGradient: {
-    padding: 20,
-    borderRadius: 16,
-    minWidth: 140,
-  },
-  statContent: {
-    alignItems: 'flex-start',
-  },
-  statIcon: {
-    fontSize: 24,
-    marginBottom: 8,
-  },
-  statLabel: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.9)',
-    fontWeight: '500',
-    marginBottom: 4,
-  },
-  statValue: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: 'white',
-  },
-  filtersSection: {
-    backgroundColor: 'white',
-    padding: 20,
-    marginHorizontal: 20,
-    marginTop: -20,
-    borderRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  searchBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  searchInput: {
-    flex: 1,
-    paddingVertical: 14,
-    paddingHorizontal: 8,
-    fontSize: 16,
-    color: '#1F2937',
-  },
-  categoriesFilter: {
-    flexDirection: 'row',
-  },
-  filterChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    marginRight: 8,
-    backgroundColor: 'white',
-  },
-  filterChipActive: {
-    backgroundColor: '#3B82F6',
-    borderColor: '#3B82F6',
-  },
-  filterChipText: {
-    fontSize: 14,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  filterChipTextActive: {
-    color: 'white',
-  },
-  quickActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  quickAction: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    padding: 8,
-    borderRadius: 8,
-    alignItems: 'center',
-    minWidth: 60,
-  },
-  quickActionText: {
-    color: 'white',
-    fontSize: 10,
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  // Styles pour le FAB
-  fabContainer: {
-    position: 'absolute',
-    bottom: 210,
-    right: 30,
-    alignItems: 'flex-end',
-    zIndex: 1000,
-  },
-  fabButton: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#dcbde8ff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  fabMenu: {
-    position: 'absolute',
-    bottom: -140,
-    right: 60,
-    backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 6,
-    minWidth: 150,
-  },
-  fabMenuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 8,
-  },
-  fabMenuText: {
-    color: 'white',
-    fontWeight: '600',
-    marginLeft: 8,
-    fontSize: 14,
-  },
-  fournisseursList: {
-    flex: 1,
-    padding: 20,
-  },
-  fabSpacer: {
-    height: 100,
-  },
-  fournisseurCard: {
-    borderRadius: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
-    overflow: 'hidden',
-  },
-  fournisseurHeader: {
-    padding: 20,
-  },
-  fournisseurHeaderContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  fournisseurInfo: {
-    flexDirection: 'row',
-    flex: 1,
-  },
-  logoContainer: {
-    marginRight: 12,
-  },
-  defaultLogo: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fournisseurTextContainer: {
-    flex: 1,
-  },
-  fournisseurNom: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: 'white',
-    marginBottom: 8,
-  },
-  fournisseurTags: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  tag: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  tagText: {
-    fontSize: 12,
-    color: 'white',
-    fontWeight: '500',
-  },
-  fournisseurActions: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  actionButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  contactInfo: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 16,
-    marginBottom: 12,
-  },
-  contactItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  contactText: {
-    color: 'white',
-    fontSize: 14,
-  },
-  fournisseurDescription: {
-    color: 'rgba(255,255,255,0.9)',
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 12,
-  },
-  fournisseurFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  produitCount: {
-    color: 'rgba(255,255,255,0.8)',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  produitsContainer: {
-    backgroundColor: '#F9FAFB',
-    padding: 16,
-  },
-  produitCard: {
-    backgroundColor: 'white',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 8,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  produitInfo: {
-    flexDirection: 'row',
-    flex: 1,
-  },
-  produitLogo: {
-    marginRight: 12,
-  },
-  produitDetails: {
-    flex: 1,
-  },
-  produitNom: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    marginBottom: 4,
-  },
-  produitDetailsText: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 4,
-  },
-  produitDescription: {
-    fontSize: 13,
-    color: '#6B7280',
-    lineHeight: 18,
-  },
-  produitActions: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  produitActionBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 40,
-    backgroundColor: 'white',
-    borderRadius: 16,
-    marginTop: 20,
-  },
-  emptyStateTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#374151',
-    marginBottom: 8,
-    marginTop: 16,
-  },
-  emptyStateText: {
-    fontSize: 16,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 24,
-  },
-  emptyStateButton: {
-    backgroundColor: '#3B82F6',
+  retryBtn: {
+    backgroundColor: "#3B82F6",
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
   },
-  emptyStateButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
+  retryText: { color: "white", fontWeight: "600" },
+
+  // Header
+  header: {
+    backgroundColor: "white",
+    padding: 3,
+    // Au lieu de Platform.OS === 'ios' ? 100 : 40
+    paddingTop: Platform.OS === "android" ? StatusBar.currentHeight + -40 : 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#2072deff",
+  },
+  rowBetween: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  headerTitle: { fontSize: 28, fontWeight: "900", color: "#1E293B" },
+  headerSub: { fontSize: 14, color: "#8b7464ff", marginTop: 4 },
+  addBtn: {
+    backgroundColor: "#3B82F6",
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  // Alerts
+  alertBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#2f1b96ff",
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 12,
+    marginBottom: 12,
+  },
+  alertText: {
+    flex: 1,
+    marginLeft: 8,
+    color: "#DC2626",
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  alertBtn: {
+    backgroundColor: "#DC2626",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  alertBtnText: { color: "white", fontSize: 12, fontWeight: "600" },
+
+  // Search
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F1F5F9",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    height: 40,
+    marginTop: 15,
+  },
+  searchInput: { flex: 1, marginLeft: 8, fontSize: 14, color: "#1E293B" },
+
+  // Categories Filter
+  categoriesScroll: { marginTop: 10 },
+  chip: {
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "white",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    marginRight: 8,
+  },
+  chipActive: { backgroundColor: "#1E293B", borderColor: "#1E293B" },
+  chipText: { fontSize: 13, color: "#64748B", fontWeight: "600" },
+  chipTextActive: { color: "white" },
+
+  // Empty State
+  emptyState: {
+    alignItems: "center",
+    padding: 40,
+    marginTop: 40,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#374151",
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: "#6B7280",
+    textAlign: "center",
+    marginBottom: 24,
+  },
+  emptyBtn: {
+    backgroundColor: "#3B82F6",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  emptyBtnText: {
+    color: "white",
+    fontWeight: "bold",
     fontSize: 16,
   },
-  // Styles pour les modals
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
+
+  // Supplier Card
+  card: {
+    backgroundColor: "white",
+    borderRadius: 15,
+    marginBottom: 12,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#F1F5F9",
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
   },
-  modalContent: {
-    backgroundColor: 'white',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '90%',
+  cardHeader: {
+    flexDirection: "row",
+    padding: 15,
+    alignItems: "center",
+  },
+  logo: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  cardTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#334155",
+  },
+  cardSub: {
+    fontSize: 12,
+    color: "#94A3B8",
+    marginTop: 2,
+  },
+  cardActions: {
+    flexDirection: "row",
+    gap: 6,
+  },
+  miniBtn: {
+    width: 32,
+    height: 32,
+    backgroundColor: "#F8FAFC",
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#F1F5F9",
+  },
+
+  // Expanded Card Details
+  cardDetail: {
+    padding: 15,
+    backgroundColor: "#F8FAFC",
+    borderTopWidth: 1,
+    borderTopColor: "#F1F5F9",
+  },
+  quickActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginBottom: 12,
+  },
+  quickBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "white",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    gap: 6,
+  },
+  quickText: {
+    fontSize: 13,
+    color: "#3B82F6",
+    fontWeight: "500",
+  },
+  infoText: {
+    fontSize: 13,
+    color: "#64748B",
+    marginBottom: 8,
+  },
+  descText: {
+    fontSize: 13,
+    color: "#94A3B8",
+    marginTop: 5,
+    fontStyle: "italic",
+    lineHeight: 18,
+  },
+
+  // Products Section
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#475569",
+    marginBottom: 10,
+  },
+  productList: {
+    marginTop: 15,
+    borderTopWidth: 1,
+    borderTopColor: "#E2E8F0",
+    paddingTop: 10,
+  },
+  pItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+    backgroundColor: "white",
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#F1F5F9",
+  },
+  pName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#475569",
+  },
+  pPrice: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#3B82F6",
+  },
+  pStock: {
+    color: "#94A3B8",
+    fontWeight: "400",
+    fontSize: 13,
+  },
+  stockBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  stockText: {
+    color: "white",
+    fontSize: 10,
+    fontWeight: "700",
+  },
+
+  // Action Menu Modal
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "flex-end",
+  },
+  sheet: {
+    backgroundColor: "white",
+    borderTopLeftRadius: 25,
+    borderTopRightRadius: 25,
+    padding: 25,
+  },
+  sheetHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  sheetTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#1E293B",
+  },
+  rowAround: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginVertical: 15,
+  },
+  sheetBtn: {
+    alignItems: "center",
+    width: 90,
+  },
+  sheetEmoji: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  sheetBtnText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#475569",
+    textAlign: "center",
+  },
+
+  // Modals Common
+  modalView: {
+    flex: 1,
+    backgroundColor: "white",
+    paddingTop: 40,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    fontWeight: "800",
+    color: "#1E293B",
   },
-  formContainer: {
-    maxHeight: 400,
-    padding: 20,
-  },
-  formGroup: {
-    marginBottom: 20,
-  },
-  formRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  formGroupHalf: {
-    width: '48%',
-  },
+
+  // Form Elements
   label: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#374151',
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#64748B",
+    marginTop: 15,
     marginBottom: 8,
+  },
+  helperText: {
+    fontSize: 11,
+    color: "#94A3B8",
+    marginTop: 4,
+    fontStyle: "italic",
   },
   input: {
-    backgroundColor: '#F9FAFB',
+    backgroundColor: "#F1F5F9",
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 15,
+    color: "#1E293B",
     borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
+    borderColor: "#E2E8F0",
   },
-  textArea: {
-    minHeight: 80,
-    textAlignVertical: 'top',
+
+  // Logo Upload
+  logoUploadSection: {
+    marginBottom: 20,
   },
-  imageUploadContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 8,
-  },
-  uploadButton: {
-    backgroundColor: '#3B82F6',
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    flex: 1,
-  },
-  uploadButtonDisabled: {
-    backgroundColor: '#9CA3AF',
-  },
-  uploadButtonText: {
-    color: 'white',
-    fontWeight: '600',
-  },
-  removeButton: {
-    backgroundColor: '#EF4444',
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    flex: 1,
-  },
-  removeButtonText: {
-    color: 'white',
-    fontWeight: '600',
-  },
-  imagePreview: {
-    marginTop: 12,
-  },
-  imagePreviewText: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 8,
-  },
-  categoriesGrid: {
-    maxHeight: 200,
-  },
-  categorieCard: {
+  uploadBtn: {
+    backgroundColor: "#F8FAFC",
     borderWidth: 2,
-    borderRadius: 8,
-    padding: 12,
+    borderColor: "#E2E8F0",
+    borderStyle: "dashed",
+    borderRadius: 12,
+    height: 120,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  uploadText: {
+    marginTop: 8,
+    color: "#3B82F6",
+    fontWeight: "600",
+  },
+  logoPreview: {
+    width: 100,
+    height: 100,
+    borderRadius: 10,
+  },
+  removeLogoBtn: {
+    marginTop: 10,
+    alignItems: "center",
+  },
+  removeLogoText: {
+    color: "#EF4444",
+    fontSize: 14,
+    fontWeight: "500",
+  },
+
+  // Categories Grid
+  categoriesGrid: {
+    flexDirection: "row",
+    marginBottom: 5,
+  },
+  categoryOption: {
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 2,
+    marginRight: 8,
     marginBottom: 8,
-    position: 'relative',
   },
-  categorieIcon: {
-    fontSize: 20,
-    marginBottom: 4,
+  categoryText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#475569",
   },
-  categorieName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    marginBottom: 2,
+  categoryTextActive: {
+    color: "white",
   },
-  categorieExemples: {
-    fontSize: 12,
-    color: '#6B7280',
+  addCategoryBtn: {
+    borderColor: "#CBD5E1",
+    borderStyle: "dashed",
   },
-  checkmark: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    fontSize: 16,
-    fontWeight: 'bold',
+  addCategoryText: {
+    color: "#64748B",
+    fontWeight: "600",
   },
-  unitesContainer: {
-    flexDirection: 'row',
+
+  // Unit Selector
+  uniteSelector: {
+    position: "relative",
   },
-  uniteChip: {
-    backgroundColor: '#F3F4F6',
+  uniteOptions: {
+    position: "absolute",
+    right: -28,
+    top: 0,
+    bottom: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+
+  // Suppliers Grid
+  suppliersGrid: {
+    flexDirection: "row",
+    marginBottom: 10,
+  },
+  supplierOption: {
+    backgroundColor: "#F1F5F9",
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 20,
+    borderRadius: 8,
     marginRight: 8,
     borderWidth: 1,
-    borderColor: '#D1D5DB',
+    borderColor: "#E2E8F0",
   },
-  uniteChipActive: {
-    backgroundColor: '#3B82F6',
-    borderColor: '#3B82F6',
+  supplierOptionText: {
+    fontSize: 13,
+    color: "#475569",
+    fontWeight: "500",
   },
-  uniteChipText: {
-    fontSize: 14,
-    color: '#374151',
-    fontWeight: '500',
-  },
-  uniteChipTextActive: {
-    color: 'white',
-  },
-  fournisseursGrid: {
-    maxHeight: 150,
-  },
-  fournisseurOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F3F4F6',
+  selectedSupplier: {
+    backgroundColor: "#F8FAFC",
     padding: 12,
-    borderRadius: 8,
-    marginBottom: 8,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    marginBottom: 10,
   },
-  fournisseurOptionActive: {
-    borderColor: '#3B82F6',
-    backgroundColor: '#DBEAFE',
+  selectedSupplierText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#3B82F6",
   },
-  fournisseurOptionText: {
+
+  // Save Button
+  btnSave: {
+    backgroundColor: "#3B82F6",
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 30,
+    alignItems: "center",
+    elevation: 2,
+    shadowColor: "#3B82F6",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  btnSaveText: {
+    color: "white",
+    fontWeight: "800",
     fontSize: 16,
-    color: '#374151',
-    marginLeft: 12,
+  },
+
+  // Category Modal
+  overlayCenter: {
     flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
   },
-  colorsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+  dialog: {
+    width: "85%",
+    backgroundColor: "white",
+    borderRadius: 20,
+    padding: 20,
   },
-  colorOption: {
+  dialogHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  dialogTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1E293B",
+  },
+  colorCircle: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  colorOptionActive: {
+  colorActive: {
     borderWidth: 3,
-    borderColor: 'white',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
+    borderColor: "#000",
   },
-  colorCheckmark: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  iconsContainer: {
-    flexDirection: 'row',
+  iconsScroll: {
+    flexDirection: "row",
+    marginTop: 10,
   },
   iconOption: {
     width: 50,
     height: 50,
-    borderRadius: 8,
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
+    borderRadius: 12,
+    backgroundColor: "#F1F5F9",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 10,
     borderWidth: 2,
-    borderColor: 'transparent',
+    borderColor: "transparent",
   },
   iconOptionActive: {
-    borderColor: '#3B82F6',
-    backgroundColor: '#DBEAFE',
+    borderColor: "#3B82F6",
+    backgroundColor: "#EFF6FF",
   },
-  iconText: {
-    fontSize: 20,
+  btnCancel: {
+    marginTop: 15,
+    alignItems: "center",
+    padding: 10,
   },
-  modalActions: {
-    flexDirection: 'row',
-    padding: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
+  btnCancelText: {
+    color: "#666",
+    fontSize: 14,
   },
-  modalButton: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
+  dropdownButton: {
+    backgroundColor: "#F1F5F9",
+    borderRadius: 10,
+    padding: 12,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
   },
-  cancelButton: {
-    backgroundColor: '#F3F4F6',
-    marginRight: 12,
+  dropdownButtonText: {
+    fontSize: 15,
+    color: "#1E293B",
+    textTransform: "capitalize",
   },
-  cancelButtonText: {
-    color: '#374151',
-    fontSize: 16,
-    fontWeight: '600',
+  dropdownContainer: {
+    backgroundColor: "white",
+    borderRadius: 10,
+    marginTop: 5,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    // Pour que la liste passe au-dessus des autres éléments
+    position: "absolute",
+    top: 70,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+    elevation: 5, // Ombre sur Android
+    shadowColor: "#000", // Ombre sur iOS
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
-  submitButton: {
-    backgroundColor: '#3B82F6',
+  dropdownItem: {
+    padding: 12,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
   },
-  submitButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
+  dropdownItemActive: {
+    backgroundColor: "#EFF6FF",
+  },
+  dropdownItemText: {
+    fontSize: 14,
+    color: "#475569",
+  },
+  dropdownItemTextActive: {
+    color: "#3B82F6",
+    fontWeight: "600",
   },
 });
 

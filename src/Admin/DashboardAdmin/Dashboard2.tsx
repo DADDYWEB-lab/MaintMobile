@@ -162,6 +162,7 @@ export default function FileManagerUI({ navigation }: FileManagerUIProps) {
 
       // Pour activeStaff, on aurait besoin des données de tâches déjà chargées
       // Cette logique pourrait être déplacée dans un effet séparé
+
       const activeStaff = staff.length; // Version simplifiée
 
       setStats((prev) => ({
@@ -169,8 +170,11 @@ export default function FileManagerUI({ navigation }: FileManagerUIProps) {
         activeStaff,
       }));
     });
-    unsubscribers.push(unsubStaff);
 
+    unsubscribers.push(unsubStaff);
+              
+             
+               
     // Fournisseurs
     const qFournisseurs = query(collection(db, "fournisseurs"));
     const unsubFournisseurs = onSnapshot(qFournisseurs, (snapshot) => {
@@ -322,7 +326,29 @@ export default function FileManagerUI({ navigation }: FileManagerUIProps) {
         status: "configuration",
         navigationRoute: "DevisCommande",
       },
-     
+      
+      // {
+      //   id: "Employee",
+      //   name: "Employee",
+      //   type: "settings",
+      //   icon: Settings,
+      //   backgroundColor: "#29d9a1ff",
+      //   iconColor: "#634b5eff",
+      //   count: 0,
+      //   status: "configuration",
+      //   navigationRoute: "Employee",
+      // },
+      //   {
+      //   id: "Fournisseur",
+      //   name: "Fournisseur",
+      //   type: "settings",
+      //   icon: Settings,
+      //   backgroundColor: "#29d9a1ff",
+      //   iconColor: "#634b5eff",
+      //   count: 0,
+      //   status: "configuration",
+      //   navigationRoute: "FournisseurPage",
+      // },
     ];
 
     setDataItems(items);
@@ -330,7 +356,7 @@ export default function FileManagerUI({ navigation }: FileManagerUIProps) {
 
   const filteredItems = dataItems.filter(
     (item) =>
-      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
       item.type.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -343,14 +369,11 @@ export default function FileManagerUI({ navigation }: FileManagerUIProps) {
         activeOpacity={0.7}
         accessibilityLabel={`${item.name} ${item.type}`}
         accessibilityRole="button"
-        onPress={() => navigation.navigate(item.navigationRoute)}
-      >
+        onPress={() => navigation.navigate(item.navigationRoute)} >
         <View
           style={[
             styles.fileCardContainer,
-            { backgroundColor: item.backgroundColor },
-          ]}
-        >
+            { backgroundColor: item.backgroundColor },   ]} >
           <View style={styles.fileIconContainer}>
             <Icon size={28} color={item.iconColor} />
           </View>
@@ -751,7 +774,7 @@ const styles = StyleSheet.create({
     color: "#64748B",
     fontWeight: "500",
   },
-
+  
   bottomNav: {
     position: "absolute",
     bottom: 20,

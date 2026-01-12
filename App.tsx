@@ -17,7 +17,7 @@ import Espaces from "./src/Admin/Espaces/Espaces";
 import Fournisseurs from "./src/Admin/Fournisseurs/Fournisseurs";
 
 import Devis from "./src/Admin/Devis/Devis2";
-import Commande from './src/Admin/Devis/Commande'
+import Commande from "./src/Admin/Devis/Commande";
 
 import Chat from "./src/Admin/Chat/Chat";
 import Menu from "./src/Admin/Menue/Menue";
@@ -26,50 +26,52 @@ import Dashboard2 from "./src/Admin/DashboardAdmin/Dashboard2";
 import Video from "./src/Video/Video";
 
 import NewReclamation from "./src/Admin/Reclamation/AddReclamationModal";
-import Parametres from './src/ParametresApplication/Parametres';
+import Parametres from "./src/ParametresApplication/Parametres";
 
 import { FA6Style } from "@expo/vector-icons/build/FontAwesome6";
-import Profile from './src/ParametresApplication/Profile'
+import Profile from "./src/ParametresApplication/Profile";
+import DevisCommande from "./src/Admin/Devis/Devis";
 
-import DevisCommande from './src/Admin/Devis/Devis'
+import Employee from './src/Employees/Employee'
+import FournisseurPage from './src/Fournisseur/Fournisseur'
+import TachesEmployee from './src/Employees/TachesEmployee'
 const Stack = createNativeStackNavigator();
 
 export default function App() {
   return (
     <NavigationContainer>
-      {/* <Stack.Navigator
-        initialRouteName="Login"
-        screenOptions={{ headerShown: false }}
-      > */}
+
+
 
       <Stack.Navigator
-        initialRouteName="Video"
+        initialRouteName="Login"
         screenOptions={{ headerShown: false }}
-      >
-        <Stack.Screen name="Video" component={Video} />
+      >                
 
-        <Stack.Screen name="Login" component={LoginScreen} />
-   <Stack.Screen
+     <Stack.Screen name="Login" component={LoginScreen} />
+
+     
+     <Stack.Screen
           name="Parametres"
           component={Parametres}
           options={{ headerShown: false }}
         />
 
-         <Stack.Screen
+        <Stack.Screen
           name="Profile"
           component={Profile}
           options={{ headerShown: false }}
         />
-        <Stack.Screen
+       <Stack.Screen
           name="DashboardAdmin"
           component={DashboardAdmin}
           options={{ headerShown: false }}
-        />
+      />
         <Stack.Screen
           name="Dashboard2"
           component={Dashboard2}
           options={{ headerShown: false }}
-        />
+        /> 
 
         {/* gestion des taches */}
         <Stack.Screen
@@ -119,9 +121,7 @@ export default function App() {
           component={AddStaffScreen}
           options={{ title: "Ajouter un membre" }}
         />
-  <Stack.Screen
-
-
+        <Stack.Screen
           name="EditStaff"
           component={EditStaff}
           options={{ title: "modifier un membre" }}
@@ -147,17 +147,16 @@ export default function App() {
           options={{ title: "Gestion des Devis" }}
         />
 
-         <Stack.Screen
+        <Stack.Screen
           name="Commande"
           component={Commande}
           options={{ title: "Gestion des Commande" }}
         />
-<Stack.Screen
+        <Stack.Screen
           name="DevisCommande"
           component={DevisCommande}
           options={{ title: "Gestion des Commande" }}
         />
-
 
         <Stack.Screen
           name="Chat"
@@ -169,6 +168,36 @@ export default function App() {
           component={Menu}
           options={{ title: "Gestion des Devis" }}
         />
+
+{/* interfaces employee */}
+
+
+
+ <Stack.Screen
+          name="Employee"
+          component={Employee}
+          options={{ title: "interfaces employee" }}
+        />
+
+<Stack.Screen
+          name="TachesEmployee"
+          component={TachesEmployee}
+          options={{ title: "interfaces employee" }}
+        />
+
+
+
+
+
+
+
+ <Stack.Screen
+          name="FournisseurPage"
+          component={FournisseurPage}
+          options={{ title: "espace fournisseur" }}
+        />
+
+
       </Stack.Navigator>
     </NavigationContainer>
   );
